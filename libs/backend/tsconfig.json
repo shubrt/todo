@@ -1,0 +1,11 @@
+{
+  "extends": "../../tools/typescript/core.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "lib": ["ESNext", "DOM"],
+    "types": ["vite-plus/client", "node"]
+  },
+  "include": ["convex", "test", "vitest.config.ts"]
+}

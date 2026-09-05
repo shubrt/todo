@@ -1,0 +1,182 @@
+import { ConvexError } from "convex/values";
+import {
+  commandSchema,
+  completionFiltersSchema,
+  taskFiltersSchema,
+  type Command,
+} from "@todo/contracts";
+
+export const MAX_BODY_BYTES = 32 * 1024;
+
+export async function readJson(request: Request): Promise<Record<string, unknown>> {
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message: "Content-Type application/json ist erforderlich.",
+    });
+  const length = Number(request.headers.get("content-length") ?? 0);
+  if (length > MAX_BODY_BYTES)
+    throw new ConvexError({
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Die Anfrage darf höchstens 32 KiB enthalten.",
+    });
+  const reader = request.body?.getReader();
+  if (!reader)
+    throw new ConvexError({ code: "INVALID_INPUT", message: "Ein JSON-Objekt ist erforderlich." });
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY_BYTES) {
+      await reader.cancel();
+      throw new ConvexError({
+        code: "PAYLOAD_TOO_LARGE",
+        message: "Die Anfrage darf höchstens 32 KiB enthalten.",
+      });
+    }
+    chunks.push(value);
+  }
+  const joined = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const body: unknown = JSON.parse(new TextDecoder().decode(joined));
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw new Error("object required");
+    return body as Record<string, unknown>;
+  } catch {
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message: "Ein gültiges JSON-Objekt ist erforderlich.",
+    });
+  }
+}
+
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.entries(value)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
+  return JSON.stringify(value);
+}
+
+export function parseFilters(url: URL, completions = false) {
+  const values: Record<string, unknown> = Object.fromEntries(url.searchParams);
+  if (values.limit !== undefined) values.limit = Number(values.limit);
+  if (values.isAi === "true") values.isAi = true;
+  if (values.isAi === "false") values.isAi = false;
+  if (completions && typeof values.date === "string") {
+    values.from = values.date;
+    values.to = values.date;
+    delete values.date;
+  }
+  const parsed = (completions ? completionFiltersSchema : taskFiltersSchema).safeParse(values);
+  if (!parsed.success)
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message:
+        "Ungültige Filter. limit muss zwischen 1 und 500 liegen; Daten im Format YYYY-MM-DD.",
+    });
+  return parsed.data;
+}
+
+export function routeCommand(method: string, path: string, body: Record<string, unknown>): Command {
+  const parts = path
+    .replace(/^\/api\/v1\/tasks\/?/, "")
+    .split("/")
+    .filter(Boolean);
+  if (
+    "type" in body ||
+    "taskId" in body ||
+    ("parentId" in body && !(method === "POST" && parts[0] === "reorder" && parts.length === 1))
+  )
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message: "Aufgaben- und Eltern-ID werden über die Route festgelegt.",
+    });
+  let command: unknown;
+  if (method === "POST" && parts.length === 0) command = { type: "create", input: body };
+  else if (method === "POST" && parts[0] === "reorder" && parts.length === 1)
+    command = { ...body, type: "reorder" };
+  else if (parts.length === 1 && method === "PATCH")
+    command = { type: "update", taskId: parts[0], input: body };
+  else if (parts.length === 1 && method === "DELETE")
+    command = { ...body, type: "discard", taskId: parts[0] };
+  else if (parts.length === 2 && method === "POST") {
+    const taskId = parts[0];
+    const action = parts[1];
+    const types: Record<string, string> = {
+      subtasks: "addSubtask",
+      complete: "complete",
+      move: "move",
+      "clear-inbox": "clearInbox",
+      snooze: "snooze",
+      plan: "plan",
+      "normalize-urgency": "normalizeUrgency",
+    };
+    if (action === "reorder-subtasks") command = { ...body, type: "reorder", parentId: taskId };
+    else if (action && types[action]) command = { ...body, type: types[action], taskId };
+  }
+  if (!command)
+    throw new ConvexError({ code: "NOT_FOUND", message: "Diese API-Operation existiert nicht." });
+  const parsed = commandSchema.safeParse(command);
+  if (!parsed.success)
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message: "Die Anfrage enthält fehlende, ungültige oder nicht erlaubte Felder.",
+    });
+  return parsed.data;
+}
+
+export function errorResponse(error: unknown, requestId: string): Response {
+  let data: unknown = error instanceof ConvexError ? error.data : null;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      data = null;
+    }
+  }
+  const detail = data as { code?: string; message?: string } | null;
+  const statuses: Record<string, number> = {
+    UNAUTHENTICATED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    INVALID_INPUT: 400,
+    CONFLICT: 409,
+    PAYLOAD_TOO_LARGE: 413,
+    NOT_CONFIGURED: 503,
+  };
+  const code = detail?.code && statuses[detail.code] ? detail.code : "INTERNAL_ERROR";
+  return jsonResponse(
+    {
+      error: {
+        code,
+        message:
+          code === "INTERNAL_ERROR"
+            ? "Die Anfrage konnte nicht verarbeitet werden."
+            : (detail?.message ?? "Ungültige Anfrage."),
+      },
+      requestId,
+    },
+    statuses[code] ?? 500,
+  );
+}
+
+export function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}

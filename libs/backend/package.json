@@ -1,0 +1,32 @@
+{
+  "name": "@todo/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./api": "./convex/_generated/api.ts",
+    "./dataModel": "./convex/_generated/dataModel.ts",
+    "./convex/_generated/api": "./convex/_generated/api.ts",
+    "./convex/_generated/dataModel": "./convex/_generated/dataModel.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run",
+    "codegen": "node scripts/codegen.mjs",
+    "codegen:cloud": "convex codegen --typecheck disable"
+  },
+  "dependencies": {
+    "@todo/contracts": "workspace:*",
+    "@todo/logging": "workspace:*",
+    "convex": "catalog:",
+    "jose": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "catalog:",
+    "@types/node": "catalog:",
+    "convex-test": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

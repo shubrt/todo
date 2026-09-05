@@ -1,0 +1,23 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "node_modules/.bin/vp run build",
+    "watchPatterns": [
+      "/apps/web/**",
+      "/libs/**",
+      "/tools/typescript/**",
+      "/.node-version",
+      "/package.json",
+      "/pnpm-lock.yaml",
+      "/pnpm-workspace.yaml",
+      "/railway.json"
+    ]
+  },
+  "deploy": {
+    "startCommand": "node apps/web/.output/server/index.mjs",
+    "healthcheckPath": "/api/health",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}

@@ -2,8 +2,22 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   test: {
-    include: ["{apps,libs}/*/test/**/*.test.ts"],
-    passWithNoTests: true,
+    projects: [
+      {
+        test: {
+          name: "backend",
+          environment: "edge-runtime",
+          include: ["libs/backend/test/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
+          name: "node",
+          environment: "node",
+          include: ["apps/*/test/**/*.test.{ts,tsx}", "libs/logging/test/**/*.test.ts"],
+        },
+      },
+    ],
   },
 
   lint: {
@@ -18,12 +32,14 @@ export default defineConfig({
       "**/.gemini/**",
       "**/.cursor/**",
       "**/*.gen.ts",
+      "**/_generated/**",
     ],
     options: { typeAware: true, typeCheck: true },
   },
 
   fmt: {
     ignorePatterns: [
+      "AGENT_HANDOFF.md",
       "**/node_modules/**",
       "**/dist/**",
       "**/.cache/**",
@@ -34,6 +50,7 @@ export default defineConfig({
       "**/.gemini/**",
       "**/.cursor/**",
       "**/*.gen.ts",
+      "**/_generated/**",
     ],
   },
 

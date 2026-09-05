@@ -9,25 +9,31 @@
   },
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "vp exec tsc --noEmit && vp run --filter '@todo/*' typecheck",
     "test": "vp test run",
     "check": "vp check",
     "fix": "vp check --fix",
     "sherif": "vp exec sherif",
     "qa": "vp check && vp run sherif && vp run typecheck && vp run test",
     "prepare": "if [ -z \"$CI\" ]; then vp config; fi",
-    "commitlint": "commitlint --edit"
+    "commitlint": "commitlint --edit",
+    "dev": "vp run @todo/web#dev",
+    "build": "vp run @todo/web#build",
+    "start": "vp run @todo/web#start",
+    "codegen": "vp run @todo/backend#codegen",
+    "keys:generate": "node scripts/generate-auth-keys.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.0.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@commitlint/types": "^20.2.0",
+    "@types/node": "catalog:",
     "sherif": "^1.11.1",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "engines": {
-    "node": ">=22.12.0",
+    "node": ">=24.0.0",
     "pnpm": ">=11.0.0"
   },
   "packageManager": "pnpm@11.1.1"

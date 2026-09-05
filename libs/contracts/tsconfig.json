@@ -1,0 +1,5 @@
+{
+  "extends": "../../tools/typescript/core.json",
+  "compilerOptions": { "module": "ESNext", "moduleResolution": "Bundler", "noEmit": true },
+  "include": ["src"]
+}

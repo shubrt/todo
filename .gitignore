@@ -19,6 +19,7 @@ yarn-error.log*
 # local env files
 .env*
 !/.env.example
+!**/.env.example
 
 # typescript
 dist/
@@ -29,3 +30,7 @@ dist/
 
 # vite plus
 .vite/
+.tanstack/
+coverage/
+playwright-report/
+test-results/
