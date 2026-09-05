@@ -1,0 +1,8 @@
+packages:
+  - "apps/*"
+  - "libs/*"
+  - "tools/*"
+
+catalog:
+  typescript: ^5.9.2
+  vite-plus: ^0.1.21

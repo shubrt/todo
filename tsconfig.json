@@ -1,0 +1,9 @@
+{
+  "extends": "./tools/typescript/core.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true
+  },
+  "include": ["vite.config.ts", "commitlint.config.ts"]
+}

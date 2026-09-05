@@ -1,0 +1,10 @@
+{
+  "name": "@todo/tsconfig",
+  "private": true,
+  "files": [
+    "*.json"
+  ],
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

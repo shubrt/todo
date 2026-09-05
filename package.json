@@ -1,0 +1,34 @@
+{
+  "name": "todo",
+  "private": true,
+  "bugs": "https://github.com/shubrt/todo/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shubrt/todo.git"
+  },
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run",
+    "check": "vp check",
+    "fix": "vp check --fix",
+    "sherif": "vp exec sherif",
+    "qa": "vp check && vp run sherif && vp run typecheck && vp run test",
+    "prepare": "if [ -z \"$CI\" ]; then vp config; fi",
+    "commitlint": "commitlint --edit"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@commitlint/types": "^20.2.0",
+    "sherif": "^1.11.1",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=11.0.0"
+  },
+  "packageManager": "pnpm@11.1.1"
+}
