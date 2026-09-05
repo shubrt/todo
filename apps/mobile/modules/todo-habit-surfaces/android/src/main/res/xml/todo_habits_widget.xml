@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+  android:minWidth="240dp" android:minHeight="160dp"
+  android:targetCellWidth="4" android:targetCellHeight="3"
+  android:minResizeWidth="160dp" android:minResizeHeight="110dp"
+  android:updatePeriodMillis="1800000"
+  android:initialLayout="@layout/todo_habits_widget"
+  android:previewLayout="@layout/todo_habits_widget"
+  android:description="@string/todo_habits_description"
+  android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" />

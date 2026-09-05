@@ -1,12 +1,15 @@
 # Architektur
 
-| Paket              | Aufgabe                                                                        |
-| ------------------ | ------------------------------------------------------------------------------ |
-| `apps/web`         | React, TanStack Start, responsive Oberfläche und Shoo-Loginrouten              |
-| `libs/backend`     | Convex-Datenmodell, Fachoperationen, Autorisierung, HTTP-API und Zeitsteuerung |
-| `libs/contracts`   | Validierte externe Eingaben und gemeinsame Typen                               |
-| `libs/logging`     | Strukturierte Console-Ereignisse und serverseitiger evlog-/Axiom-Adapter       |
-| `tools/typescript` | Gemeinsame TypeScript-Konfiguration                                            |
+| Paket                | Aufgabe                                                                         |
+| -------------------- | ------------------------------------------------------------------------------- |
+| `apps/web`           | React, TanStack Start, responsive Oberfläche und Shoo-Loginrouten               |
+| `apps/desktop`       | Electron-Menüleisten-App, schwebendes macOS-Fenster und sicherer Gerätespeicher |
+| `apps/mobile`        | Expo/React Native sowie native Habit-Widgets und Live-Anzeigen                  |
+| `libs/backend`       | Convex-Datenmodell, Fachoperationen, Autorisierung, HTTP-API und Zeitsteuerung  |
+| `libs/contracts`     | Validierte externe Eingaben und gemeinsame Typen                                |
+| `libs/native-client` | Geräteverbindungen, Token-Erneuerung und Habit-HTTP-Zugriff                     |
+| `libs/logging`       | Strukturierte Console-Ereignisse und serverseitiger evlog-/Axiom-Adapter        |
+| `tools/typescript`   | Gemeinsame TypeScript-Konfiguration                                             |
 
 Die Web-App abonniert Convex-Queries direkt. Änderungen über externe HTTP
 Actions verwenden dieselben fachlichen Mutationen und aktualisieren damit
@@ -30,6 +33,17 @@ Benannte API-Schlüssel bilden einen separaten Zugangsweg für Integrationen.
 Ihr vollständiger Wert erscheint nur bei der Erzeugung. Der Backendbestand
 enthält den Hash und das sichtbare Präfix. Deployment-Schlüssel gehören nicht
 zum laufenden Webserver oder zu externen Aufgabenintegrationen.
+
+Mobile und Desktop tauschen ihren jeweiligen Geräteschlüssel gegen ein
+höchstens fünf Minuten gültiges JWT mit `apiKeyId` ein. Fachfunktionen lesen
+den Schlüssel bei jedem Zugriff; Widerruf und Ablauf invalidieren auch
+aktive Abonnements. Die Schlüsselverwaltung selbst erfordert weiterhin
+eine Browser-Sitzung. Details stehen in [Geräteanmeldung](native-api.md).
+
+Die offenen nativen Clients abonnieren Convex wie die Web-App. Habit-Widgets
+verwenden native HTTP-Aufrufe und einen abgeleiteten, datierten Snapshot.
+Das ist kein zweiter Aufgabenbestand. Die [Widget-Dokumentation](habit-surfaces.md)
+beschreibt Hintergrundaktualisierung, sichere Speicherung und Tageswechsel.
 
 ## Aufgaben, Historie und Zeit
 

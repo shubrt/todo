@@ -8,6 +8,16 @@ import {
 
 export const MAX_BODY_BYTES = 32 * 1024;
 
+export function applicationKey(request: Request): string {
+  const match = request.headers.get("authorization")?.match(/^Bearer (todo_[A-Za-z0-9_-]{43})$/);
+  if (!match?.[1])
+    throw new ConvexError({
+      code: "UNAUTHENTICATED",
+      message: "Ein gültiger API-Schlüssel ist erforderlich.",
+    });
+  return match[1];
+}
+
 export async function readJson(request: Request): Promise<Record<string, unknown>> {
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
     throw new ConvexError({

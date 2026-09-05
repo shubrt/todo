@@ -1,32 +1,21 @@
 import { ConvexError, v } from "convex/values";
-import { commandSchema, completionFiltersSchema, taskFiltersSchema } from "@todo/contracts";
 import {
-  internalMutation,
-  internalQuery,
-  type MutationCtx,
-  type QueryCtx,
-} from "./_generated/server";
-import { executeCommand, getTask, listCompletions, listTasks } from "./domain";
-
-async function requireKey(ctx: QueryCtx | MutationCtx, tokenHash: string) {
-  const key = await ctx.db
-    .query("apiKeys")
-    .withIndex("by_tokenHash", (q) => q.eq("tokenHash", tokenHash))
-    .unique();
-  if (
-    !key ||
-    !process.env.TODO_OWNER_ID ||
-    key.ownerId !== process.env.TODO_OWNER_ID ||
-    key.revokedAt !== undefined ||
-    (key.expiresAt !== undefined && key.expiresAt <= Date.now())
-  ) {
-    throw new ConvexError({
-      code: "UNAUTHENTICATED",
-      message: "Der API-Schlüssel ist ungültig oder wurde widerrufen.",
-    });
-  }
-  return key;
-}
+  commandSchema,
+  completionFiltersSchema,
+  taskFiltersSchema,
+  type HabitSnapshot,
+} from "@todo/contracts";
+import { internalMutation, internalQuery } from "./_generated/server";
+import {
+  executeCommand,
+  getTask,
+  listCompletions,
+  listTasks,
+  processOwnerDay,
+  readSettings,
+} from "./domain";
+import { requireApiKeyByHash } from "./auth";
+import { addDays, localDate, startOfDate } from "./time";
 
 export const read = internalQuery({
   args: {
@@ -36,7 +25,7 @@ export const read = internalQuery({
     filters: v.any(),
   },
   handler: async (ctx, args) => {
-    const key = await requireKey(ctx, args.tokenHash);
+    const key = await requireApiKeyByHash(ctx, args.tokenHash);
     if (args.resource === "task") return getTask(ctx, key.ownerId, args.taskId ?? "");
     if (args.resource === "completions") {
       const parsed = completionFiltersSchema.safeParse(args.filters);
@@ -64,6 +53,36 @@ export const read = internalQuery({
   },
 });
 
+/** Bring scheduled day transitions up to date before exposing a widget snapshot. */
+export const habitSnapshot = internalMutation({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, { tokenHash }): Promise<HabitSnapshot> => {
+    const key = await requireApiKeyByHash(ctx, tokenHash);
+    await processOwnerDay(ctx, key.ownerId);
+    const settings = await readSettings(ctx, key.ownerId);
+    const generatedAt = Date.now();
+    const timeZone = settings?.timeZone ?? "Europe/Berlin";
+    const today = localDate(generatedAt, timeZone);
+    const habits = (await listTasks(ctx, key.ownerId, { view: "habits" }))
+      .filter((task) => !task.parentId && task.occurrenceKey === today)
+      .map((task) => ({
+        id: task._id,
+        title: task.title,
+        completed: task.state === "done",
+        occurrenceKey: today,
+      }));
+    return {
+      generatedAt,
+      localDate: today,
+      timeZone,
+      nextResetAt: startOfDate(addDays(today, 1), timeZone),
+      habits,
+      completedCount: habits.filter((habit) => habit.completed).length,
+      totalCount: habits.length,
+    };
+  },
+});
+
 /** Authentication, receipt lookup, domain write and receipt commit are one transaction. */
 export const write = internalMutation({
   args: {
@@ -73,7 +92,7 @@ export const write = internalMutation({
     command: v.any(),
   },
   handler: async (ctx, args) => {
-    const key = await requireKey(ctx, args.tokenHash);
+    const key = await requireApiKeyByHash(ctx, args.tokenHash);
     const parsed = commandSchema.safeParse(args.command);
     if (!parsed.success)
       throw new ConvexError({ code: "INVALID_INPUT", message: "Ungültiger Aufgabenbefehl." });

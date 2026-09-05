@@ -6,6 +6,7 @@ import { useSessionAuth } from "../auth";
 import { Modal, Spinner } from "../components/ui";
 import { areas, useTaskActions, type Area } from "./task-context";
 import { RecurrenceSettings } from "./recurrences";
+import { deviceConnectionJson } from "./device-connection";
 
 export function SettingsView() {
   const settings = useQuery(api.settings.get, {});
@@ -100,8 +101,11 @@ function ApiKeys() {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [newKey, setNewKey] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"key" | "connection" | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+  const deviceConnection = newKey
+    ? deviceConnectionJson(import.meta.env.VITE_CONVEX_URL, newKey)
+    : null;
   async function submit(event: FormEvent) {
     event.preventDefault();
     const result = await actions.run("key-create", () => create({ name: name.trim() }));
@@ -115,14 +119,14 @@ function ApiKeys() {
       <div className="section-heading">
         <div>
           <h2>API-Schlüssel</h2>
-          <p>Für Raycast, Agenten und deine eigenen Eingänge.</p>
+          <p>Für deine Desktop-App, Habits auf dem Handy und eigene Eingänge.</p>
         </div>
         <button
           className="button secondary compact"
           onClick={() => {
             setCreateOpen(true);
             setNewKey(null);
-            setCopied(false);
+            setCopied(null);
           }}
         >
           <Plus size={15} />
@@ -197,6 +201,40 @@ function ApiKeys() {
                 <ShieldCheck size={20} />
                 <p>Kopiere den Schlüssel jetzt. Er wird dir nur dieses eine Mal angezeigt.</p>
               </div>
+              {deviceConnection && (
+                <div className="device-connection">
+                  <label className="field">
+                    <span>Geräteverbindung</span>
+                    <textarea
+                      aria-label="Geräteverbindung"
+                      value={deviceConnection}
+                      readOnly
+                      rows={5}
+                      spellCheck={false}
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                    <small>
+                      Komplett kopieren und beim Verbinden in der Desktop- oder mobilen App
+                      einfügen. Enthält den Schlüssel und die passende Backend-Adresse.
+                    </small>
+                  </label>
+                  <button
+                    className="button primary"
+                    onClick={() => {
+                      void actions.run("connection-copy", async () => {
+                        await navigator.clipboard.writeText(deviceConnection);
+                        setCopied("connection");
+                      });
+                    }}
+                  >
+                    {copied === "connection" ? <Check size={16} /> : <Copy size={16} />}
+                    {copied === "connection"
+                      ? "Geräteverbindung kopiert"
+                      : "Geräteverbindung kopieren"}
+                  </button>
+                </div>
+              )}
+              <p className="field-hint">Einzelner API-Schlüssel für eigene Integrationen:</p>
               <code>{newKey}</code>
               <div className="form-footer">
                 <button
@@ -209,16 +247,16 @@ function ApiKeys() {
                   Schließen
                 </button>
                 <button
-                  className="button primary"
+                  className="button secondary"
                   onClick={() => {
                     void actions.run("key-copy", async () => {
                       await navigator.clipboard.writeText(newKey);
-                      setCopied(true);
+                      setCopied("key");
                     });
                   }}
                 >
-                  {copied ? <Check size={16} /> : <Copy size={16} />}
-                  {copied ? "Kopiert" : "Schlüssel kopieren"}
+                  {copied === "key" ? <Check size={16} /> : <Copy size={16} />}
+                  {copied === "key" ? "Kopiert" : "Schlüssel kopieren"}
                 </button>
               </div>
             </div>

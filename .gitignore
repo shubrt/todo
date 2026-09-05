@@ -34,3 +34,13 @@ dist/
 coverage/
 playwright-report/
 test-results/
+
+# Native generated projects and distribution artifacts
+apps/mobile/.expo/
+apps/mobile/ios/
+apps/mobile/android/
+apps/desktop/release/
+*.xcuserstate
+**/xcuserdata/
+**/.gradle/
+**/build/

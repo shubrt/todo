@@ -20,6 +20,37 @@ function fail(code: string, message: string): never {
   throw new ConvexError({ code, message });
 }
 
+async function signOwnerToken(
+  ownerId: string,
+  claims: Record<string, string>,
+  credentialExpiry?: number,
+) {
+  const issuer = process.env.AUTH_JWT_ISSUER;
+  if (!issuer || !process.env.AUTH_JWT_PRIVATE_JWK)
+    fail("NOT_CONFIGURED", "Die Anmeldung ist noch nicht eingerichtet.");
+  const jwk = JSON.parse(process.env.AUTH_JWT_PRIVATE_JWK);
+  if (
+    !jwk.kid ||
+    jwk.kty !== "EC" ||
+    jwk.crv !== "P-256" ||
+    !publicJwks().keys.some((key) => key.kid === jwk.kid && key.x === jwk.x && key.y === jwk.y)
+  )
+    fail("NOT_CONFIGURED", "Der Signierschlüssel ist nicht eingerichtet.");
+  const key = await importJWK(jwk, "ES256");
+  const expiresAt =
+    Math.floor(Math.min(Date.now() + TOKEN_DURATION, credentialExpiry ?? Infinity) / 1000) * 1000;
+  if (expiresAt <= Date.now()) fail("UNAUTHENTICATED", "Die Anmeldung ist abgelaufen.");
+  const token = await new SignJWT(claims)
+    .setProtectedHeader({ alg: "ES256", typ: "JWT", kid: jwk.kid })
+    .setIssuer(issuer)
+    .setAudience("todo")
+    .setSubject(ownerId)
+    .setIssuedAt()
+    .setExpirationTime(expiresAt / 1000)
+    .sign(key);
+  return { token, expiresAt };
+}
+
 export const identity = internalAction({
   args: { code: v.string(), codeVerifier: v.string(), redirectUri: v.string() },
   handler: async (_ctx, args): Promise<{ origin: string; subject: string }> => {
@@ -85,28 +116,15 @@ export const token = internalAction({
       tokenHash: await sha256(sessionToken),
     });
     if (!session) fail("UNAUTHENTICATED", "Bitte erneut anmelden.");
-    const issuer = process.env.AUTH_JWT_ISSUER;
-    if (!issuer || !process.env.AUTH_JWT_PRIVATE_JWK)
-      fail("NOT_CONFIGURED", "Die Anmeldung ist noch nicht eingerichtet.");
-    const jwk = JSON.parse(process.env.AUTH_JWT_PRIVATE_JWK);
-    if (
-      !jwk.kid ||
-      jwk.kty !== "EC" ||
-      jwk.crv !== "P-256" ||
-      !publicJwks().keys.some((key) => key.kid === jwk.kid && key.x === jwk.x && key.y === jwk.y)
-    )
-      fail("NOT_CONFIGURED", "Der Signierschlüssel ist nicht eingerichtet.");
-    const key = await importJWK(jwk, "ES256");
-    const expiresAt = Math.min(Date.now() + TOKEN_DURATION, session.expiresAt);
-    const token = await new SignJWT({ sid: session.id })
-      .setProtectedHeader({ alg: "ES256", typ: "JWT", kid: jwk.kid })
-      .setIssuer(issuer)
-      .setAudience("todo")
-      .setSubject(session.ownerId)
-      .setIssuedAt()
-      .setExpirationTime(Math.floor(expiresAt / 1000))
-      .sign(key);
-    return { token, expiresAt };
+    return signOwnerToken(session.ownerId, { sid: session.id }, session.expiresAt);
+  },
+});
+
+export const deviceToken = internalAction({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, { tokenHash }): Promise<{ token: string; expiresAt: number }> => {
+    const credential = await ctx.runMutation(internal.auth.deviceCredential, { tokenHash });
+    return signOwnerToken(credential.ownerId, { apiKeyId: credential.id }, credential.expiresAt);
   },
 });
 

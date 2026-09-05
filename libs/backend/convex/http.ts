@@ -6,6 +6,7 @@ import { internal } from "./_generated/api";
 import { publicJwks, sha256 } from "./authCrypto";
 import {
   canonicalJson,
+  applicationKey,
   errorResponse,
   jsonResponse,
   parseFilters,
@@ -88,22 +89,51 @@ for (const path of [
 ])
   http.route({ path, method: "POST", handler: authHandler });
 
+http.route({
+  path: "/auth/device-token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const requestId = crypto.randomUUID();
+    try {
+      const tokenHash = await sha256(applicationKey(request));
+      const result = await ctx.runAction(internal.authActions.deviceToken, { tokenHash });
+      logEvent({
+        service: "todo-convex",
+        operation: "auth.device-token",
+        outcome: "ok",
+        requestId,
+      });
+      return jsonResponse(result);
+    } catch (error) {
+      const response = errorResponse(error, requestId);
+      logEvent({
+        service: "todo-convex",
+        operation: "auth.device-token",
+        outcome: "error",
+        requestId,
+        errorCode: String(response.status),
+      });
+      return response;
+    }
+  }),
+});
+
 const apiHandler = httpAction(async (ctx, request) => {
   const requestId = crypto.randomUUID();
   const started = Date.now();
   try {
-    const authorization = request.headers.get("authorization");
-    const match = authorization?.match(/^Bearer (todo_[A-Za-z0-9_-]{43})$/);
-    if (!match?.[1])
-      throw new ConvexError({
-        code: "UNAUTHENTICATED",
-        message: "Ein gültiger API-Schlüssel ist erforderlich.",
-      });
-    const tokenHash = await sha256(match[1]);
+    const tokenHash = await sha256(applicationKey(request));
     const url = new URL(request.url);
     let data: unknown;
     if (request.method === "GET") {
-      if (url.pathname === "/api/v1/completions")
+      if (url.pathname === "/api/v1/habits/snapshot") {
+        if (url.search)
+          throw new ConvexError({
+            code: "INVALID_INPUT",
+            message: "Der Habit-Stand benötigt keine Filter.",
+          });
+        data = await ctx.runMutation(internal.apiCommands.habitSnapshot, { tokenHash });
+      } else if (url.pathname === "/api/v1/completions")
         data = await ctx.runQuery(internal.apiCommands.read, {
           tokenHash,
           resource: "completions",
@@ -172,5 +202,6 @@ for (const method of ["GET", "POST", "PATCH", "DELETE"] as const) {
   http.route({ pathPrefix: "/api/v1/tasks/", method, handler: apiHandler });
 }
 http.route({ path: "/api/v1/completions", method: "GET", handler: apiHandler });
+http.route({ path: "/api/v1/habits/snapshot", method: "GET", handler: apiHandler });
 
 export default http;

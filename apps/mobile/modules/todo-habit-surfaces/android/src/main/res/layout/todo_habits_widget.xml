@@ -1,0 +1,13 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent" android:layout_height="match_parent"
+  android:orientation="vertical" android:padding="16dp" android:background="@drawable/todo_habit_background">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+    <TextView android:id="@+id/habit_title" android:layout_width="0dp" android:layout_height="32dp" android:layout_weight="1" android:gravity="center_vertical" android:text="@string/todo_habits_title" android:textColor="#343B2E" android:textSize="16sp" android:textStyle="bold" />
+    <TextView android:id="@+id/habit_count" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#697B51" android:textSize="14sp" android:text="0/0" />
+    <TextView android:id="@+id/habit_refresh" android:layout_width="40dp" android:layout_height="36dp" android:gravity="center" android:text="↻" android:textColor="#697B51" android:textSize="24sp" android:contentDescription="@string/todo_habits_refresh" />
+  </LinearLayout>
+  <ProgressBar android:id="@+id/habit_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="4dp" android:layout_marginBottom="10dp" android:progressTint="#7E9266" android:progressBackgroundTint="#DEE3D5" />
+  <LinearLayout android:id="@+id/habit_rows" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+  <TextView android:id="@+id/habit_message" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/todo_habits_connect" android:textColor="#737B69" android:textSize="13sp" />
+  <TextView android:id="@+id/habit_footer" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="bottom" android:paddingTop="8dp" android:textColor="#7D8475" android:textSize="11sp" />
+</LinearLayout>

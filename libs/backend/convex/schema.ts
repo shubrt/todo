@@ -95,6 +95,7 @@ export default defineSchema({
     revokedAt: v.optional(v.number()),
     lastUsedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
+    expiryScheduledAt: v.optional(v.number()),
   })
     .index("by_tokenHash", ["tokenHash"])
     .index("by_owner", ["ownerId"]),

@@ -14,7 +14,11 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
-          include: ["apps/*/test/**/*.test.{ts,tsx}", "libs/logging/test/**/*.test.ts"],
+          include: [
+            "apps/*/test/**/*.test.{ts,tsx}",
+            "libs/logging/test/**/*.test.ts",
+            "libs/native-client/test/**/*.test.ts",
+          ],
         },
       },
     ],

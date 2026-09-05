@@ -1578,6 +1578,18 @@ kbd {
   line-height: 1.9;
   margin: 20px 0;
 }
+.device-connection {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+}
+.device-connection textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.device-connection > .button {
+  justify-self: start;
+}
 .key-notice {
   display: flex;
   gap: 12px;

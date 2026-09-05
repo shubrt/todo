@@ -28,7 +28,8 @@ vi.mock("convex/react", () => ({
   useConvexConnectionState: () => ({ isWebSocketConnected: state.connected }),
   useMutation: (reference: Parameters<typeof getFunctionName>[0]) =>
     state.mutations.get(getFunctionName(reference)) ?? vi.fn().mockResolvedValue(null),
-  useAction: () => vi.fn(),
+  useAction: (reference: Parameters<typeof getFunctionName>[0]) =>
+    state.mutations.get(getFunctionName(reference)) ?? vi.fn(),
   useConvex: () => ({ query: vi.fn() }),
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) => {
     if (args === "skip") return undefined;
@@ -101,6 +102,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("Aufgabenoberfläche", () => {
@@ -211,5 +213,43 @@ describe("Aufgabenoberfläche", () => {
     await setInput(from, "2026-09-01");
     expect(container.querySelector(".form-error")).toBeNull();
     expect(container.querySelector(".history-view")).not.toBeNull();
+  });
+
+  it("kopiert eine vollständige Geräteverbindung und entfernt den einmaligen Schlüssel beim Schließen", async () => {
+    vi.stubEnv("VITE_CONVEX_URL", "https://personal-test.eu-west-1.convex.cloud");
+    const apiKey = `todo_${"a".repeat(43)}`;
+    const create = vi.fn().mockResolvedValue({ key: apiKey, id: "key-id", prefix: "todo_aaaa" });
+    const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    state.mutations.set("auth:createApiKey", create);
+    await act(async () => root.render(<TodoApp />));
+    const settings = [...container.querySelectorAll<HTMLButtonElement>(".nav-item")].find(
+      (button) => button.textContent === "Einstellungen",
+    )!;
+    await act(async () => settings.click());
+    const addKey = [
+      ...container.querySelectorAll<HTMLButtonElement>(".section-heading > button"),
+    ].find((button) => button.textContent?.trim() === "Schlüssel")!;
+    await act(async () => addKey.click());
+    const name = container.querySelector<HTMLInputElement>("dialog input")!;
+    await setInput(name, "Mein MacBook");
+    await act(async () =>
+      name.form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+    );
+    expect(create).toHaveBeenCalledWith({ name: "Mein MacBook" });
+    const connection = container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="Geräteverbindung"]',
+    )!;
+    expect(JSON.parse(connection.value)).toEqual({
+      version: 1,
+      siteUrl: "https://personal-test.eu-west-1.convex.site",
+      apiKey,
+    });
+    await click(".device-connection > button");
+    expect(copy).toHaveBeenLastCalledWith(connection.value);
+    expect(container.querySelector(".new-key > code")?.textContent).toBe(apiKey);
+    await click('dialog [aria-label="Schließen"]');
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(container.textContent).not.toContain(apiKey);
+    expect(container.querySelector('textarea[aria-label="Geräteverbindung"]')).toBeNull();
   });
 });

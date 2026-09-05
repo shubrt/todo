@@ -54,6 +54,8 @@ KI-Aufgaben erhalten eine einfache Kennzeichnung. Aufgaben werden nur auf
 ausdrücklichen Wunsch aus Gesprächen abgeleitet. Mögliche inhaltliche Dubletten
 erfordern eine Rückfrage, bevor der Agent einen neuen Eintrag anlegt.
 
-Die erste Fassung setzt Internet voraus. Weitere Clients für Glaze und Expo,
-Geräteassistenten, Push und Widgets folgen später. Ein Wiederöffnen bereits
+Die App setzt für Änderungen Internet voraus. Expo für iOS/Android und ein
+schwebender macOS-Client ergänzen inzwischen die Web-App. Habit-Widgets und
+Live-Anzeigen verwenden denselben Datenbestand. Geräteassistenten und ein
+APNs-Push-Dienst stehen noch aus. Ein Wiederöffnen bereits
 erledigter Arbeit ist noch nicht definiert und deshalb nicht Teil dieser Fassung.

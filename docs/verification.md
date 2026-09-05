@@ -1,63 +1,100 @@
 # Verifikation
 
 Geprüft am 5. September 2026 mit Node `24.20.0`, dem gepinnten pnpm-Workspace
-und Vite+.
+und Vite+. Web, Mobile und Desktop verwenden dasselbe Convex-Produktionsbackend.
 
 ## Automatisierte Prüfungen
 
-`vp run qa` prüft Formatierung, Lint, Workspace-Konventionen, sämtliche
-TypeScript-Pakete und die Verhaltenstests. Der aktuelle Stand umfasst 50
-erfolgreiche Tests:
+`vp run qa` besteht vollständig: Formatierung, Lint einschließlich Typanalyse,
+Workspace-Konventionen, alle TypeScript-Pakete und 99 Verhaltenstests in 15 Dateien.
 
-| Testbestand           | Anzahl | Geprüftes Verhalten                                                                                                                                                                            |
-| --------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backend-Fachlogik     | 19     | Erfassung, Inbox ohne Positionswechsel, zwei Ebenen, Sortierung, manuelle Parent-Abschlüsse, unveränderliche Historie, Archivierung, Fristen, Snooze, DST, Wiederholungen, Habits und Aufholen |
-| Backend-Auth und HTTP | 15     | Shoo-Signatur, Issuer, Audience, Ablauf, Besitzerzuordnung, Codeaustausch, Session-Hashes, Token-Ausstellung, Widerruf, atomare Idempotenz, Pagination, Größenlimits und gemeinsame Fachregeln |
-| Web-Auth              | 8      | PKCE/State, Cookie-Eigenschaften, CSRF, Einrichtungszustand, Identitätscheck ohne Sitzung sowie Logout bei Fehlern                                                                             |
-| Web-Bedienung         | 7      | Entwurf nach fehlgeschlagenem Capture, kein falscher Abschluss, keine Offline-Mutation, Inbox ohne Umsortieren, unabhängiger Subtask-Abschluss, Loginfehler und ungültige Verlaufszeiträume    |
-| Logging               | 1      | Keine Bodies, Aufgabentitel oder Zugangsdaten in strukturierten Ereignissen                                                                                                                    |
+| Testbestand              | Anzahl | Geprüftes Verhalten                                                                                                                         |
+| ------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backend                  | 42     | Aufgabenregeln, Wiederholungen, DST/Tageswechsel, Shoo, Sessions, HTTP-Idempotenz, Geräte-JWTs, Schlüsselwiderruf, aktuelle Habit-Snapshots |
+| Web                      | 18     | PKCE/State, CSRF, Cookies, Offline-Sperren, fehlgeschlagene Befehle, unabhängige Subtasks, einmalige Geräteverbindungen                     |
+| Gemeinsamer Geräteclient | 9      | Regionsadressen, sichere Verbindungsdaten, Token-Erneuerung, gebündelte Abrufe, Fehler und wiederholbare Abschlüsse                         |
+| Mobile                   | 13     | Refresh während laufendem Abruf, Abmeldung während Konfiguration/Publikation, alte Snapshots, Kalender, Sortierung, Convex-Cleanup          |
+| iOS-Config-Plugin        | 4      | Echtes Expo-Projekttemplate, wiederholter Prebuild, Extension/Embed/Build-Abhängigkeit, gemeinsame Entitlements und Mindestversionen        |
+| Desktop                  | 12     | Vertrauensgrenzen für IPC, Monitorwechsel, verschlüsselte Speicherung, fehlgeschlagene UI-Aktionen, Provider-Cleanup                        |
+| Logging                  | 1      | Keine Bodies, Aufgabentitel oder Zugangsdaten in strukturierten Ereignissen                                                                 |
 
-Backendtests laufen mit `convex-test`, einer kontrollierten Uhr und isolierten
-Daten. Die Auth-/HTTP-Tests laufen in der Edge-Testumgebung, Web-Auth in Node
-und UI-Tests in Happy DOM. Shoo-Netzwerkantworten werden für diese Tests durch
-kontrollierte Antworten mit lokal signierten Prüftokens ersetzt.
+Fachtests verwenden isolierte Daten und eine kontrollierte Uhr. Sie verändern
+keine persönlichen Aufgaben im Produktivbackend. Native Betriebssystemtests
+sind von diesen Tests getrennt zu betrachten.
 
-`vp run codegen` erzeugt die Convex-Referenzen ohne Cloud-Zugang.
-`vp run build` erzeugt erfolgreich Client, SSR und Nitro-Node-Server. Der
-Schlüsselgenerator wurde auf zusammengehörige EC-Schlüssel, ein ausschließlich
-öffentliches JWKS und Dateirechte `0600` geprüft. Der Capture-Skill besteht
-die Skill-Validierung.
+## Web und Backend
 
-## Browser und Node-Server
+Die tatsächliche Web-App läuft unter `https://todo.localhost`. Shoo-Anmeldung,
+Besitzerzuordnung, Cookie-Sitzung und Convex-JWT-Verifikation über das
+veröffentlichte JWKS wurden mit der echten lokalen Origin geprüft. Desktop-
+und Handybreite der Web-Oberfläche wurden zuvor ohne horizontalen Überlauf
+oder JavaScript-Fehler geprüft. Client, SSR und Nitro-Server werden über
+`vp run build` erzeugt.
 
-Die tatsächliche Web-App wurde unter der Portless-Adresse
-`https://todo.localhost` auf Desktopbreite und mit `390 × 844` Pixeln geprüft.
-Die Einrichtungsansicht rendert ohne JavaScript-Fehler und ohne horizontalen
-Überlauf. Texte und Bedienelemente wurden nach der ersten Prüfung vergrößert
-und kontrastreicher gestaltet.
+Die Gerätefunktionen sind im bestehenden Convex-Produktionsdeployment
+veröffentlicht. Reale Prüfungen ergaben:
 
-Eine getrennte, temporäre Testansicht der angemeldeten Oberfläche wurde mit
-dem ursprünglichen Vorhaben „Zeitbuchung umstellen“, ausgeklappten Subtasks
-und einem zusammenhängenden Bynder-Auftrag visuell geprüft. Diese Darstellung
-stammt aus Testdaten und wurde nicht als Demo-Modus in die Anwendung eingebaut.
-Auch sie hat auf Desktop und Handy keinen horizontalen Überlauf.
+- `/auth/device-token`: HTTP 200, fünf Minuten Laufzeit, `apiKeyId` ohne Browser-`sid`.
+- `/api/v1/habits/snapshot`: HTTP 200, fünf vorhandene Habits mit dem aktuellen `occurrenceKey`.
+- Schlüsselverwaltung mit Geräte-JWT: abgewiesen.
+- Web-App und macOS-Client lesen gleichzeitig denselben Datenbestand.
 
-Der gebaute Node-Server wurde lokal gestartet. `/api/health`, die
-Einrichtungsantwort von `/api/auth/session`, das SSR-Dokument, UTF-8 und die
-Asset-Verweise wurden geprüft.
+Der Mac erhielt einen eigenen widerrufbaren Anwendungsschlüssel. Temporäre
+Verbindungsdateien wurden entfernt; der dauerhafte Zugang liegt verschlüsselt
+im Geräte-Speicher. Bestehende persönliche Aufgaben wurden für diese Prüfung
+nicht abgeschlossen oder durch Testaufgaben ergänzt.
 
-## Noch ausstehende Betriebsabnahme
+## macOS
 
-Es wurden kein Convex-Cloudprojekt, keine produktive Shoo-Zuordnung und kein
-Railway-Dienst eingerichtet. Deshalb sind folgende Prüfungen erst nach der
-[Einrichtung](development.md) mit echten Zugangsdaten möglich:
+Das arm64-Paket wurde gebaut und als echte Electron-App gestartet. Nach dem
+Verbindungsdialog, nach lokaler Abmeldung und nach erneuter Anmeldung wurden
+alle sechs Ansichten sowie die Einstellungen geprüft. Es gab keine Renderer-
+oder Konsolenfehler und keinen horizontalen Überlauf.
 
-- Shoo-Login aus der tatsächlichen lokalen und produktiven Origin.
-- Convex-Verifikation des eigenen JWT über das veröffentlichte JWKS.
-- Token-Erneuerung und Entzug einer laufenden Websitzung im echten Dienst.
-- Eine API-Änderung bei zwei gleichzeitig geöffneten, angemeldeten Webclients.
-- Zeitübergänge und optionale Axiom-Weiterleitung in der gewählten Cloud-Umgebung.
+Native Laufzeitprüfungen bestätigen: sichtbares Fenster, `alwaysOnTop`, alle
+Schreibtische, registrierter globaler Kurzbefehl, Renderer-Sandbox, isolierter
+Preload und deaktivierte Node-Integration. Der macOS-Schlüsselbund war verfügbar;
+`connection.enc` enthält den Geräteschlüssel nicht im Klartext. Nach der Anmeldung
+stehen keine eingegebenen Zugangsdaten mehr im Formular oder in localStorage.
 
-Die Tests prüfen die dafür implementierten Regeln. Sie ersetzen diese
-Betriebsabnahme nicht. Die Reihenfolge für genau ein Produktionsbackend steht
-in der Einrichtungsanleitung.
+Die App liegt unter `apps/desktop/release/todo-darwin-arm64/todo.app`, zusätzlich
+als ZIP und lokal unter `~/Applications/todo.app`. Sie ist nicht mit einer Apple
+Developer ID signiert oder notarisiert. Manuelles Wechseln zwischen mehreren
+Spaces und fremden Vollbild-Apps bleibt Teil der persönlichen Betriebsabnahme;
+die dafür vorgesehenen nativen Fensteroptionen sind gesetzt und geprüft.
+
+## Expo, Widgets und Live Activities
+
+Beide JavaScript-/Hermes-Bundles wurden erfolgreich exportiert. `expo install
+--check` meldet passende Abhängigkeiten. Expo Doctor besteht 20 von 21 Prüfungen;
+ausschließlich die lokale CocoaPods-Installation fehlt.
+
+Der Prebuild erzeugt iOS und Android. Autolinking findet das lokale native Modul.
+Das iOS-Projekt besitzt genau eine Widget-Extension, eine App-Abhängigkeit und
+eine eingebettete `.appex`. App, Podfile und Extension verwenden mindestens iOS 17. Höhere konfigurierte Mindestversionen bleiben erhalten. App Group, gemeinsamer
+Schlüsselbund und EAS-Metadaten stimmen überein.
+
+Die Swift-Quellen für Datenmodell, gemeinsamen Speicher, App Intents, Widget und
+Live Activity wurden zusammen gegen das vorhandene iOS-18.2-Simulator-SDK auf
+Typkorrektheit geprüft. Der Expo-Moduladapter besteht die Swift-Syntaxprüfung.
+Kotlin und Android-Ressourcen wurden geprüft, aber noch nicht nativ kompiliert.
+
+Ein vollständiger nativer App-Build und Gerätetests sind noch offen. Das lokale
+Xcode 16.2 ist für Expo 57 zu alt und sein `xcrun` scheitert zusätzlich beim Laden
+einer Systembibliothek. Android SDK und passendes JDK fehlen. EAS-Profile sind
+vorbereitet; es ist noch kein Expo-Konto angemeldet. Der geprüfte lokale Wizard
+`bash .cache/setup-mobile.sh` führt durch Konto, Projekt, iPhone-Registrierung,
+Signierung, Preview-Build und Installation. Er wurde nicht interaktiv ausgeführt.
+
+Auf einem installierten Gerät stehen insbesondere Widget-Abhaken bei geschlossener
+App, Tageswechsel, Netzverlust, Schlüsselwiderruf, Live-Activity-Laufzeit und
+Android-Benachrichtigungen zur Abnahme aus. Die [mobile Anleitung](../apps/mobile/README.md)
+enthält die Schritte, [Habit-Flächen](habit-surfaces.md) die Betriebssystemgrenzen.
+
+## Weitere Betriebsarbeit
+
+Railway ist noch nicht veröffentlicht. Daher bleibt der Shoo-Login aus einer
+öffentlichen Web-Origin ebenso offen wie eine optionale Axiom-Weiterleitung.
+Push über APNs, App-Store-/Play-Store-Verteilung und macOS-Notarisierung sind
+nicht eingerichtet. Diese Punkte ändern nichts am gemeinsamen Backend und
+den bereits laufenden lokalen Web- und Mac-Clients.

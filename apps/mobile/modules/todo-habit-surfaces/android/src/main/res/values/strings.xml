@@ -1,0 +1,6 @@
+<resources>
+  <string name="todo_habits_title">Habits</string>
+  <string name="todo_habits_description">Dein täglicher Fortschritt. Habits direkt abhaken.</string>
+  <string name="todo_habits_refresh">Habits aktualisieren</string>
+  <string name="todo_habits_connect">todo öffnen und Gerät verbinden.</string>
+</resources>

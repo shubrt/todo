@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["TodoHabitSurfacesModule"] },
+  "android": { "modules": ["dev.shubrt.todo.habits.TodoHabitSurfacesModule"] }
+}
