@@ -1,5 +1,7 @@
 # Agentenübergabe: persönliche Aufgabenverwaltung
 
+> **Statusnotiz, 1. Oktober 2026.** Die Web-App und die mobile App wurden entfernt. Die Anmeldung über Shoo läuft jetzt direkt in der Desktop-App. Der aktuelle Stand steht in [docs/desktop.md](docs/desktop.md). Dieses Dokument bleibt als historischer Planungsstand unverändert.
+
 Stand: 5. September 2026. Dieses Dokument enthält den fachlichen und technischen Kontext des gesamten Planungsgesprächs. Es soll einem anderen Agenten ermöglichen, das Projekt umzusetzen, ohne die grundlegenden Anforderungen erneut erheben zu müssen.
 
 Schnelleinstieg: [Produktregeln](#4-verbindliche-produktregeln), [Architektur](#9-empfohlene-zielarchitektur), [Datenmodell](#10-datenmodell-konkreter-umsetzungsvorschlag), [Shoo und Convex](#12-anmeldung-mit-shoo-und-zugriff-auf-convex), [externe API](#13-externe-api-für-agenten-raycast-und-weitere-eingänge), [Umsetzungsphasen](#18-umsetzungsphasen-und-überprüfbare-ergebnisse), [Prüffälle](#19-verifikation-konkrete-verhaltenstests), [offene Details](#20-offene-details-und-empfohlene-standardentscheidungen), [Startanweisung](#23-startanweisung-für-den-umsetzenden-agenten).

@@ -9,7 +9,10 @@ Verwende diesen Ablauf, wenn der Nutzer ausdrücklich Aufgaben ableiten oder
 erfassen lassen möchte. Die Erwähnung einer Idee allein ist kein Schreibauftrag.
 Die API-Adresse und der Anwendungsschlüssel kommen aus `TODO_API_URL` und
 `TODO_API_KEY` oder einer vom Nutzer bereitgestellten sicheren Konfiguration.
-Keine Deployment- oder Admin-Schlüssel verwenden; Schlüssel niemals ausgeben.
+`TODO_API_KEY` ist ein Integrationsschlüssel. Der Nutzer erzeugt ihn in der
+todo-Desktop-App unter Einstellungen > Schlüssel > Neuer Integrationsschlüssel
+und sieht ihn dabei nur einmal. Fehlt er, den Nutzer darum bitten. Keine
+Deployment- oder Admin-Schlüssel verwenden; Schlüssel niemals ausgeben.
 
 Lies für konkrete Requests [den API-Vertrag](../../docs/api.md). Er gilt auch
 für Größenlimits, Antwortformate und Fehler. Zugangsdaten fehlen zu lassen

@@ -10,15 +10,16 @@ const day = (value: string) => vi.setSystemTime(new Date(value));
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const sessionId = await t.run((ctx) =>
-    ctx.db.insert("sessions", {
+  const keyId = await t.run((ctx) =>
+    ctx.db.insert("apiKeys", {
       ownerId,
-      tokenHash: "test-session",
+      name: "Test device",
+      prefix: "todo_test",
+      tokenHash: "test-key",
       createdAt: Date.now(),
-      expiresAt: Date.now() + 365 * 24 * 3600_000,
     }),
   );
-  const user = t.withIdentity({ subject: ownerId, sid: sessionId });
+  const user = t.withIdentity({ subject: ownerId, apiKeyId: keyId });
   return { t, user };
 }
 

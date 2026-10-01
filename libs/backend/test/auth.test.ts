@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { convexTest } from "convex-test";
-import { createLocalJWKSet, exportJWK, generateKeyPair, jwtVerify, SignJWT } from "jose";
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import { ownerForClaims, publicJwks, sha256, verifyShooToken } from "../convex/authCrypto";
@@ -24,14 +24,6 @@ afterEach(() => {
 
 async function fixture() {
   const t = convexTest(schema, modules);
-  const sessionId = await t.run((ctx) =>
-    ctx.db.insert("sessions", {
-      ownerId,
-      tokenHash: "session-hash",
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 60_000,
-    }),
-  );
   const tokenHash = await sha256(rawKey);
   const keyId = await t.run((ctx) =>
     ctx.db.insert("apiKeys", {
@@ -42,134 +34,18 @@ async function fixture() {
       createdAt: Date.now(),
     }),
   );
-  return {
-    t,
-    user: t.withIdentity({ subject: ownerId, sid: sessionId }),
-    sessionId,
-    keyId,
-    tokenHash,
-  };
+  return { t, user: t.withIdentity({ subject: ownerId, apiKeyId: keyId }), keyId, tokenHash };
 }
 
-describe("session authorization", () => {
-  it("rejects unauthenticated users and foreign owners", async () => {
-    const { t, sessionId } = await fixture();
-    await expect(t.query(api.tasks.list, {})).rejects.toThrow();
-    await expect(
-      t.withIdentity({ subject: "another-owner", sid: sessionId }).query(api.tasks.list, {}),
-    ).rejects.toThrow();
-  });
-  it("requires an active session and rejects the next read after revocation", async () => {
-    const { t, user, sessionId } = await fixture();
-    expect(await user.query(api.tasks.list, {})).toEqual([]);
-    await t.run((ctx) => ctx.db.patch(sessionId, { revokedAt: Date.now() }));
-    await expect(user.query(api.tasks.list, {})).rejects.toThrow();
-  });
-  it("rejects expired sessions and fails closed without configured owner", async () => {
-    const { t, user, sessionId } = await fixture();
-    vi.stubEnv("TODO_OWNER_ID", "");
-    await expect(user.query(api.tasks.list, {})).rejects.toThrow();
-    vi.stubEnv("TODO_OWNER_ID", ownerId);
-    await t.run((ctx) => ctx.db.patch(sessionId, { expiresAt: Date.now() - 1 }));
-    await expect(user.query(api.tasks.list, {})).rejects.toThrow();
-  });
-  it("issues only short ES256 tokens tied to the session", async () => {
-    const { t } = await fixture();
-    const keys = await generateKeyPair("ES256", { extractable: true });
-    const privateJwk = { ...(await exportJWK(keys.privateKey)), kid: "first" };
-    const publicJwk = { ...(await exportJWK(keys.publicKey)), kid: "first" };
-    vi.stubEnv("AUTH_JWT_PRIVATE_JWK", JSON.stringify(privateJwk));
-    vi.stubEnv("AUTH_JWT_PUBLIC_JWKS", JSON.stringify({ keys: [publicJwk] }));
-    vi.stubEnv("AUTH_JWT_ISSUER", "https://example.convex.site");
-    const sessionToken = "b".repeat(43);
-    const tokenHash = await sha256(sessionToken);
-    await t.run((ctx) =>
-      ctx.db.insert("sessions", {
-        ownerId,
-        tokenHash,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 60_000,
-      }),
-    );
-    const signed = await t.action(internal.authActions.token, { sessionToken });
-    const verified = await jwtVerify(signed.token, keys.publicKey, {
-      issuer: "https://example.convex.site",
-      audience: "todo",
-      algorithms: ["ES256"],
-    });
-    expect(verified.payload.sub).toBe(ownerId);
-    expect(verified.payload.sid).toBeTypeOf("string");
-    expect(signed.expiresAt).toBeLessThanOrEqual(Date.now() + 60_000);
-    await t.mutation(internal.auth.revokeSession, { tokenHash });
-    await expect(t.action(internal.authActions.token, { sessionToken })).rejects.toThrow();
-  });
-});
-
 describe("Shoo verification", () => {
-  it("verifies the code exchange for identity setup, but grants sessions only after owner binding", async () => {
-    const t = convexTest(schema, modules);
-    const origin = "https://todo.example";
-    const pair = await generateKeyPair("ES256", { extractable: true });
-    const idToken = await new SignJWT({})
-      .setProtectedHeader({ alg: "ES256", kid: "provider" })
-      .setIssuer("https://shoo.dev")
-      .setAudience(`origin:${origin}`)
-      .setSubject("verified-owner")
-      .setIssuedAt()
-      .setExpirationTime("5m")
-      .sign(pair.privateKey);
-    const jwks = { keys: [{ ...(await exportJWK(pair.publicKey)), kid: "provider" }] };
-    const verifier = "v".repeat(64);
-    const used = new Set<string>();
-    vi.stubEnv("APP_ALLOWED_ORIGINS", origin);
-    vi.stubEnv("SHOO_OWNER_SUBJECTS", "{}");
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL, init?: RequestInit) => {
-        if (String(input).endsWith("/.well-known/jwks.json")) return Response.json(jwks);
-        const body = init?.body;
-        if (!(body instanceof URLSearchParams))
-          throw new Error("Expected form-encoded token request");
-        expect(body.get("client_id")).toBe(`origin:${origin}`);
-        expect(body.get("redirect_uri")).toBe(`${origin}/api/auth/callback`);
-        if (body.get("code_verifier") !== verifier || used.has(body.get("code")!))
-          return Response.json({}, { status: 400 });
-        used.add(body.get("code")!);
-        return Response.json({ id_token: idToken });
-      }),
-    );
-    const send = (operation: string, code: string, codeVerifier = verifier) =>
-      t.fetch(`/auth/${operation}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ code, codeVerifier, redirectUri: `${origin}/api/auth/callback` }),
-      });
-    const identity = await send("identity", "setup");
-    expect(await identity.json()).toEqual({ origin, subject: "verified-owner" });
-    expect(await t.run((ctx) => ctx.db.query("sessions").collect())).toHaveLength(0);
-    expect((await send("login", "unbound")).status).toBe(403);
-    expect(await t.run((ctx) => ctx.db.query("sessions").collect())).toHaveLength(0);
-    vi.stubEnv("SHOO_OWNER_SUBJECTS", JSON.stringify({ [origin]: "verified-owner" }));
-    expect((await send("login", "wrong-verifier", "x".repeat(64))).status).toBe(401);
-    const signedIn = await send("login", "bound");
-    const session = await signedIn.json();
-    expect(signedIn.status).toBe(200);
-    expect(session.sessionToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    const stored = await t.run((ctx) => ctx.db.query("sessions").collect());
-    expect(stored).toHaveLength(1);
-    expect(stored[0]?.tokenHash).toBe(await sha256(session.sessionToken));
-    expect(JSON.stringify(stored)).not.toContain(session.sessionToken);
-    expect((await send("login", "bound")).status).toBe(401);
-  });
   it("accepts verified mapped identities across origins and refuses unknown people", () => {
-    vi.stubEnv(
-      "SHOO_OWNER_SUBJECTS",
-      JSON.stringify({ "https://todo.localhost": "local-sub", "https://todo.example": "prod-sub" }),
-    );
-    expect(ownerForClaims({ sub: "local-sub" }, "https://todo.localhost")).toBe(ownerId);
-    expect(ownerForClaims({ sub: "prod-sub" }, "https://todo.example")).toBe(ownerId);
-    expect(() => ownerForClaims({ sub: "someone-else" }, "https://todo.example")).toThrow();
-    expect(() => ownerForClaims({ sub: "local-sub" }, "https://todo.example")).toThrow();
+    const dev = "https://dev-one.convex.site";
+    const prod = "https://prod-one.eu-west-1.convex.site";
+    vi.stubEnv("SHOO_OWNER_SUBJECTS", JSON.stringify({ [dev]: "dev-sub", [prod]: "prod-sub" }));
+    expect(ownerForClaims({ sub: "dev-sub" }, dev)).toBe(ownerId);
+    expect(ownerForClaims({ sub: "prod-sub" }, prod)).toBe(ownerId);
+    expect(() => ownerForClaims({ sub: "someone-else" }, prod)).toThrow();
+    expect(() => ownerForClaims({ sub: "dev-sub" }, prod)).toThrow();
   });
   it("checks signature, issuer, audience and expiry", async () => {
     const pair = await generateKeyPair("ES256", { extractable: true });
@@ -224,6 +100,264 @@ describe("Shoo verification", () => {
   });
 });
 
+describe("desktop login", () => {
+  // t.fetch serves the router under this origin, so it doubles as CONVEX_SITE_URL.
+  const site = "https://some.convex.site";
+  const verifier = "v".repeat(64);
+  const state = `51234.${"s".repeat(43)}`;
+  // One Shoo signing key per file: authCrypto caches the remote JWKS across tests.
+  const shooKeys = generateKeyPair("ES256", { extractable: true });
+
+  /** Local Shoo: serves its JWKS and redeems each code once for the exact desktop parameters. */
+  async function stubShoo(subject: string) {
+    const pair = await shooKeys;
+    const jwks = { keys: [{ ...(await exportJWK(pair.publicKey)), kid: "shoo" }] };
+    const used = new Set<string>();
+    const fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      if (String(input) === "https://shoo.dev/.well-known/jwks.json") return Response.json(jwks);
+      const body = new URLSearchParams(init?.body as URLSearchParams);
+      const code = body.get("code") ?? "";
+      if (
+        String(input) !== "https://shoo.dev/token" ||
+        body.get("grant_type") !== "authorization_code" ||
+        body.get("client_id") !== `origin:${site}` ||
+        body.get("redirect_uri") !== `${site}/auth/desktop/callback` ||
+        body.get("code_verifier") !== verifier ||
+        used.has(code)
+      )
+        return Response.json({ error: "invalid_grant" }, { status: 400 });
+      used.add(code);
+      const idToken = await new SignJWT({})
+        .setProtectedHeader({ alg: "ES256", kid: "shoo" })
+        .setIssuer("https://shoo.dev")
+        .setAudience(`origin:${site}`)
+        .setSubject(subject)
+        .setIssuedAt()
+        .setExpirationTime("5m")
+        .sign(pair.privateKey);
+      return Response.json({ id_token: idToken });
+    });
+    vi.stubGlobal("fetch", fetch);
+    vi.stubEnv("CONVEX_SITE_URL", site);
+    vi.stubEnv("SHOO_OWNER_SUBJECTS", JSON.stringify({ [site]: "desktop-sub" }));
+    const t = convexTest(schema, modules);
+    const login = (body: Record<string, unknown>) =>
+      t.fetch("/auth/desktop-login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: "code", codeVerifier: verifier, deviceName: "Mac", ...body }),
+      });
+    return { t, fetch, login };
+  }
+
+  it("bounces Shoo's redirect to the loopback port in state with only code, state and error", async () => {
+    const t = convexTest(schema, modules);
+    const callback = (query: string) => t.fetch(`/auth/desktop/callback?${query}`);
+    const ok = await callback(`code=abc&state=${state}&iss=https%3A%2F%2Fshoo.dev&extra=1`);
+    expect(ok.status).toBe(302);
+    expect(ok.headers.get("cache-control")).toBe("no-store");
+    expect(ok.headers.get("referrer-policy")).toBe("no-referrer");
+    const target = new URL(ok.headers.get("location")!);
+    expect(`${target.origin}${target.pathname}`).toBe("http://127.0.0.1:51234/callback");
+    expect([...target.searchParams]).toEqual([
+      ["code", "abc"],
+      ["state", state],
+    ]);
+    const denied = new URL(
+      (await callback(`state=${state}&error=access_denied&error_description=nope`)).headers.get(
+        "location",
+      )!,
+    );
+    expect([...denied.searchParams]).toEqual([
+      ["state", state],
+      ["error", "access_denied"],
+    ]);
+    const long = new URL(
+      (await callback(`code=${"c".repeat(5000)}&state=${state}`)).headers.get("location")!,
+    );
+    expect(long.searchParams.get("code")).toHaveLength(4096);
+    for (const bad of [
+      `1023.${"s".repeat(43)}`,
+      `65536.${"s".repeat(43)}`,
+      `51234.${"s".repeat(42)}`,
+      `51234.${"s".repeat(42)}%2B`,
+      `localhost.${"s".repeat(43)}`,
+    ]) {
+      const response = await callback(`code=abc&state=${bad}`);
+      expect(response.status).toBe(400);
+      expect(response.headers.get("location")).toBeNull();
+    }
+    expect((await callback("code=abc")).status).toBe(400);
+  });
+
+  it("exchanges the code with the device's verifier and mints a named device key", async () => {
+    const { t, login } = await stubShoo("desktop-sub");
+    const response = await login({ code: "good", deviceName: "  MacBook Pro  " });
+    expect(response.status).toBe(200);
+    const created = await response.json();
+    expect(created.key).toMatch(/^todo_[A-Za-z0-9_-]{43}$/);
+    expect(created.prefix).toBe(created.key.slice(0, 13));
+    const stored = await t.run((ctx) => ctx.db.query("apiKeys").collect());
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      _id: created.id,
+      ownerId,
+      name: "MacBook Pro",
+      prefix: created.prefix,
+      tokenHash: await sha256(created.key),
+      kind: "device",
+    });
+    expect(JSON.stringify(stored)).not.toContain(created.key);
+    const authorization = `Bearer ${created.key}`;
+    expect((await t.fetch("/api/v1/tasks", { headers: { authorization } })).status).toBe(200);
+    expect((await login({ code: "good" })).status).toBe(401);
+    expect((await login({ code: "fresh", codeVerifier: "x".repeat(64) })).status).toBe(401);
+  });
+
+  it("mints a named integration key on request", async () => {
+    const { t, login } = await stubShoo("desktop-sub");
+    const response = await login({
+      code: "step-up",
+      deviceName: " task-capture ",
+      kind: "integration",
+    });
+    expect(response.status).toBe(200);
+    const created = await response.json();
+    expect(await t.run((ctx) => ctx.db.get(created.id))).toMatchObject({
+      name: "task-capture",
+      kind: "integration",
+    });
+  });
+
+  it("refuses an unmapped Shoo subject with the SHOO_OWNER_SUBJECTS entry to add", async () => {
+    const { t, login } = await stubShoo("someone-new");
+    const response = await login({});
+    expect(response.status).toBe(403);
+    const { error } = await response.json();
+    expect(error.code).toBe("FORBIDDEN");
+    expect(error.message).toContain(`SHOO_OWNER_SUBJECTS`);
+    expect(error.message).toContain(JSON.stringify({ [site]: "someone-new" }));
+    expect(await t.run((ctx) => ctx.db.query("apiKeys").collect())).toEqual([]);
+  });
+
+  it("rejects bad device names and transactions before spending the single-use code", async () => {
+    const { fetch, login } = await stubShoo("desktop-sub");
+    for (const deviceName of ["", "   ", "x".repeat(81), 42])
+      expect((await login({ deviceName })).status).toBe(400);
+    for (const kind of ["admin", null, 1, "Integration"])
+      expect((await login({ kind })).status).toBe(400);
+    expect((await login({ codeVerifier: "too-short" })).status).toBe(400);
+    expect((await login({ code: "" })).status).toBe(400);
+    vi.stubEnv("CONVEX_SITE_URL", "");
+    expect((await login({})).status).toBe(503);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("key management", () => {
+  /** Inserts a key of the test owner; returns its id and raw secret. */
+  async function insertKey(
+    t: Awaited<ReturnType<typeof fixture>>["t"],
+    name: string,
+    patch: Partial<{ ownerId: string; revokedAt: number; expiresAt: number }> = {},
+  ) {
+    const raw = `todo_${name.padEnd(43, "x").slice(0, 43)}`;
+    const id = await t.run(async (ctx) =>
+      ctx.db.insert("apiKeys", {
+        ownerId,
+        name,
+        prefix: raw.slice(0, 13),
+        tokenHash: await sha256(raw),
+        kind: "integration",
+        createdAt: Date.now(),
+        ...patch,
+      }),
+    );
+    return { id, raw };
+  }
+
+  it("lists only active keys, newest first, marks the caller's key and never returns hashes", async () => {
+    const { t, user, keyId } = await fixture();
+    vi.advanceTimersByTime(1000);
+    const capture = await insertKey(t, "capture");
+    await insertKey(t, "revoked", { revokedAt: Date.now() });
+    await insertKey(t, "expired", { expiresAt: Date.now() });
+    await insertKey(t, "foreign", { ownerId: "someone-else" });
+    const keys = await user.query(api.auth.listApiKeys, {});
+    expect(keys).toEqual([
+      {
+        id: capture.id,
+        name: "capture",
+        prefix: capture.raw.slice(0, 13),
+        kind: "integration",
+        createdAt: Date.now(),
+        lastUsedAt: null,
+        current: false,
+      },
+      {
+        id: keyId,
+        name: "Test client",
+        prefix: rawKey.slice(0, 13),
+        kind: null,
+        createdAt: Date.now() - 1000,
+        lastUsedAt: null,
+        current: true,
+      },
+    ]);
+    await expect(t.query(api.auth.listApiKeys, {})).rejects.toThrow(/UNAUTHENTICATED/);
+  });
+
+  it("revokes other keys idempotently, refuses its own and foreign keys", async () => {
+    const { t, user, keyId } = await fixture();
+    const capture = await insertKey(t, "capture");
+    const foreign = await insertKey(t, "foreign", { ownerId: "someone-else" });
+    const headers = { authorization: `Bearer ${capture.raw}` };
+    expect((await t.fetch("/api/v1/tasks", { headers })).status).toBe(200);
+    await user.mutation(api.auth.revokeApiKey, { id: capture.id });
+    const revokedAt = Date.now();
+    vi.advanceTimersByTime(1000);
+    await user.mutation(api.auth.revokeApiKey, { id: capture.id });
+    expect((await t.run((ctx) => ctx.db.get(capture.id)))?.revokedAt).toBe(revokedAt);
+    expect((await t.fetch("/api/v1/tasks", { headers })).status).toBe(401);
+    await expect(user.mutation(api.auth.revokeApiKey, { id: keyId })).rejects.toThrow(
+      /Verbindung entfernen/,
+    );
+    await expect(user.mutation(api.auth.revokeApiKey, { id: foreign.id })).rejects.toThrow(
+      /NOT_FOUND/,
+    );
+    expect((await t.run((ctx) => ctx.db.get(keyId)))?.revokedAt).toBeUndefined();
+    expect((await t.run((ctx) => ctx.db.get(foreign.id)))?.revokedAt).toBeUndefined();
+  });
+
+  it("counts only active keys toward the limit of 30, like the key list", async () => {
+    const { t } = await fixture();
+    for (let i = 0; i < 30; i++) await insertKey(t, `expired-${i}`, { expiresAt: Date.now() });
+    const mint = (i: number) =>
+      t.mutation(internal.auth.insertApiKey, {
+        tokenHash: `hash-${i}`,
+        prefix: "todo_",
+        name: `key-${i}`,
+        kind: "integration",
+      });
+    for (let i = 0; i < 29; i++) await mint(i);
+    await expect(mint(29)).rejects.toThrow(/höchstens 30/);
+  });
+
+  it("records key use at most once per hour", async () => {
+    const { t, keyId, tokenHash } = await fixture();
+    const lastUsed = async () => (await t.run((ctx) => ctx.db.get(keyId)))?.lastUsedAt;
+    await t.mutation(internal.auth.deviceCredential, { tokenHash });
+    const first = Date.now();
+    expect(await lastUsed()).toBe(first);
+    vi.advanceTimersByTime(59 * 60_000);
+    await t.mutation(internal.auth.deviceCredential, { tokenHash });
+    expect(await lastUsed()).toBe(first);
+    vi.advanceTimersByTime(60_000);
+    await t.mutation(internal.auth.deviceCredential, { tokenHash });
+    expect(await lastUsed()).toBe(Date.now());
+  });
+});
+
 describe("external API", () => {
   it("commits idempotency and create atomically, with conflicting payload rejection", async () => {
     const { t, tokenHash } = await fixture();
@@ -259,29 +393,6 @@ describe("external API", () => {
     await t.mutation(internal.apiCommands.write, args);
     await t.run((ctx) => ctx.db.patch(keyId, { revokedAt: Date.now() }));
     await expect(t.mutation(internal.apiCommands.write, args)).rejects.toThrow(/UNAUTHENTICATED/);
-  });
-  it("creates named random keys only for the signed-in owner and never lists their hashes", async () => {
-    const { t, user } = await fixture();
-    await expect(t.action(api.auth.createApiKey, { name: "Not authorized" })).rejects.toThrow();
-    const created = await user.action(api.auth.createApiKey, { name: "Coding agent" });
-    expect(created.key).toMatch(/^todo_[A-Za-z0-9_-]{43}$/);
-    const stored = await t.run((ctx) =>
-      ctx.db
-        .query("apiKeys")
-        .withIndex("by_tokenHash", (q) => q.eq("tokenHash", ""))
-        .collect(),
-    );
-    expect(stored).toEqual([]);
-    const all = await t.run((ctx) => ctx.db.query("apiKeys").collect());
-    expect(JSON.stringify(all)).not.toContain(created.key);
-    expect(all.find((key) => key._id === created.id)?.tokenHash).toBe(await sha256(created.key));
-    expect(JSON.stringify(await user.query(api.auth.listApiKeys, {}))).not.toContain("tokenHash");
-    const key = all.find((item) => item._id === created.id)!;
-    await user.mutation(api.auth.revokeApiKey, { id: key._id });
-    expect(
-      (await t.fetch("/api/v1/tasks", { headers: { authorization: `Bearer ${created.key}` } }))
-        .status,
-    ).toBe(401);
   });
   it("uses identical domain completion rules through HTTP with revocable keys", async () => {
     const { t, user, keyId } = await fixture();

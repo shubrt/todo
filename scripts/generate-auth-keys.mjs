@@ -9,9 +9,6 @@ const metadata = { alg: "ES256", use: "sig", kid };
 const privateJwk = { ...privateKey.export({ format: "jwk" }), ...metadata };
 const publicJwk = { ...publicKey.export({ format: "jwk" }), ...metadata };
 const content = [
-  "# Web server: copy only AUTH_COOKIE_SECRET into your root .env.",
-  `AUTH_COOKIE_SECRET=${randomBytes(32).toString("base64url")}`,
-  "",
   "# Convex backend: configure these values in the selected deployment.",
   "# Keep quotes for env-file import; omit the outer quotes in dashboard fields.",
   `AUTH_JWT_PRIVATE_JWK='${JSON.stringify(privateJwk)}'`,

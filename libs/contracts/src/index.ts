@@ -1,6 +1,5 @@
 import { z } from "zod";
-export { habitSnapshotSchema, habitSnapshotItemSchema } from "./native";
-export type { Connection, HabitSnapshot, HabitSnapshotItem } from "./native";
+export type { Connection, HabitSnapshot } from "./native";
 
 export const areaSchema = z.enum(["me", "agency", "work"]);
 export const listSchema = z.enum(["active", "backlog"]);

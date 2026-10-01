@@ -41,12 +41,16 @@ wieder die manuelle Reihenfolge.
 Kalenderwiederholungen erzeugen höchstens eine offene Aufgabe. Habits stehen
 täglich bereit. Die fünf ersten Habit-Namen legt der Nutzer selbst fest, weil
 im Konzept keine konkreten Namen genannt wurden. Weitere Habits sind möglich.
-`Europe/Berlin` ist der änderbare Startwert für die Zeitzone.
+`Europe/Berlin` ist der Startwert für die Zeitzone. Zeitzone und
+Standardbereich stehen in der Desktop-App unter Einstellungen > Konto und
+gelten für alle Geräte und Integrationen.
 
 Wiederholungen können täglich, an einem Wochentag oder an einem festen Monatstag
 anstehen. Ein fehlender Monatstag wird auf den letzten Tag des Monats gelegt.
 Eine offene normale Wiederholung bleibt mit ihrer ursprünglichen Frist bestehen.
 Subtasks werden nicht automatisch in die nächste Wiederholung übernommen.
+Die Ansicht Wiederholungen benennt Habits und wiederkehrende Aufgaben um,
+pausiert sie und setzt sie fort.
 Bei Habits wird der heutige Eintrag täglich erneuert; unerledigte Vortage erzeugen
 weder zusätzliche sichtbare Kopien noch künstliche Erledigungen.
 
@@ -54,8 +58,8 @@ KI-Aufgaben erhalten eine einfache Kennzeichnung. Aufgaben werden nur auf
 ausdrücklichen Wunsch aus Gesprächen abgeleitet. Mögliche inhaltliche Dubletten
 erfordern eine Rückfrage, bevor der Agent einen neuen Eintrag anlegt.
 
-Die App setzt für Änderungen Internet voraus. Expo für iOS/Android und ein
-schwebender macOS-Client ergänzen inzwischen die Web-App. Habit-Widgets und
-Live-Anzeigen verwenden denselben Datenbestand. Geräteassistenten und ein
-APNs-Push-Dienst stehen noch aus. Ein Wiederöffnen bereits
-erledigter Arbeit ist noch nicht definiert und deshalb nicht Teil dieser Fassung.
+Die App setzt für Änderungen Internet voraus. Einziger Client ist der
+schwebende macOS-Client. Die Web-App und die Expo-App für iOS und Android
+samt Habit-Widgets wurden am 1. Oktober 2026 entfernt. Anbindungen an
+Sprachassistenten stehen noch aus. Ein Wiederöffnen bereits erledigter Arbeit ist noch nicht
+definiert und deshalb nicht Teil dieser Fassung.

@@ -1,145 +1,160 @@
-import {
-  Check,
-  ChevronDown,
-  KeyRound,
-  LoaderCircle,
-  LogOut,
-  Pin,
-  Radio,
-  SlidersHorizontal,
-} from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { api } from "@todo/backend/api";
+import { useQuery } from "convex/react";
+import { ChevronDown, LogIn, LogOut, Pin, Radio, SlidersHorizontal } from "lucide-react";
+import { useId, useRef, useState, type KeyboardEvent } from "react";
 import type { DesktopPreferences } from "../shared/contracts";
+import { AccountTab } from "./account";
+import { KeysTab } from "./keys";
 import { usePlatform } from "./platform";
-import { Dialog } from "./ui";
+import { Dialog, ipcErrorMessage } from "./ui";
 
+// Login view: the main process opens Shoo in the browser and waits for its callback.
 export function ConnectionForm({ onConnected }: { onConnected?: () => void }) {
   const platform = usePlatform();
-  const [mode, setMode] = useState<"paste" | "manual">("paste");
-  const [input, setInput] = useState("");
-  const [siteUrl, setSiteUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  async function connect(event: FormEvent) {
-    event.preventDefault();
+  const cancelled = useRef(false);
+  async function login() {
     if (pending) return;
+    cancelled.current = false;
     setPending(true);
     setError(null);
     try {
-      const state = await window.desktop.connect(
-        mode === "paste"
-          ? input.trim()
-          : JSON.stringify({ siteUrl: siteUrl.trim(), apiKey: apiKey.trim() }),
-      );
-      setInput("");
-      setApiKey("");
-      setSiteUrl("");
-      platform.update(state);
+      platform.update(await window.desktop.login());
       onConnected?.();
-    } catch {
-      setError(
-        "Die Verbindung konnte nicht hergestellt werden. Prüfe die Verbindungsdaten und deine Internetverbindung.",
-      );
+    } catch (cause) {
+      if (!cancelled.current)
+        setError(ipcErrorMessage(cause, "Die Anmeldung ist fehlgeschlagen. Versuche es erneut."));
     } finally {
       setPending(false);
     }
   }
   return (
-    <form className="connection-form" onSubmit={(event) => void connect(event)}>
+    <div className="connection-form">
       <div className="connect-symbol">
-        <KeyRound size={21} />
+        <LogIn size={21} />
       </div>
       <h1>
         Deine Aufgaben.
         <br />
         Immer in Reichweite.
       </h1>
-      <p>Erstelle in den Web-Einstellungen eine Geräteverbindung und füge sie hier ein.</p>
-      <div className="form-tabs">
-        <button
-          type="button"
-          className={mode === "paste" ? "selected" : ""}
-          onClick={() => setMode("paste")}
-        >
-          Verbindung einfügen
-        </button>
-        <button
-          type="button"
-          className={mode === "manual" ? "selected" : ""}
-          onClick={() => setMode("manual")}
-        >
-          URL & Schlüssel
-        </button>
-      </div>
-      {mode === "paste" ? (
-        <label className="field">
-          <span>Verbindungsdaten</span>
-          <textarea
-            rows={3}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Verbindungscode oder JSON …"
-            spellCheck={false}
-            autoComplete="off"
-            maxLength={8192}
-            required
-          />
-        </label>
-      ) : (
-        <>
-          <label className="field">
-            <span>Backend-URL</span>
-            <input
-              type="url"
-              value={siteUrl}
-              onChange={(event) => setSiteUrl(event.target.value)}
-              placeholder="https://dein-projekt.convex.site"
-              spellCheck={false}
-              autoComplete="off"
-              required
-              maxLength={300}
-            />
-          </label>
-          <label className="field">
-            <span>Geräteschlüssel</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="todo_…"
-              autoComplete="off"
-              required
-              maxLength={100}
-            />
-          </label>
-        </>
-      )}
+      <p>Die Anmeldung öffnet sich in deinem Browser.</p>
       {(error || platform.state?.error) && (
         <p className="error-text" role="alert">
           {error ?? platform.state?.error}
         </p>
       )}
-      <button
-        className="button primary"
-        disabled={pending || (mode === "paste" ? !input.trim() : !siteUrl.trim() || !apiKey.trim())}
-      >
-        {pending ? <LoaderCircle size={15} className="spin" /> : <Check size={15} />}
-        {pending ? "Verbindung wird geprüft …" : "Verbinden"}
+      <button className="button primary" disabled={pending} onClick={() => void login()}>
+        {pending ? "Warte auf die Anmeldung im Browser …" : "Mit Shoo anmelden"}
       </button>
-      <small>Dein Schlüssel wird verschlüsselt auf diesem Mac gespeichert.</small>
-    </form>
+      {pending && (
+        <button
+          className="text-button"
+          onClick={() => {
+            cancelled.current = true;
+            void window.desktop.cancelLogin();
+          }}
+        >
+          Abbrechen
+        </button>
+      )}
+      <small>Der Geräteschlüssel wird verschlüsselt auf diesem Mac gespeichert.</small>
+    </div>
   );
 }
 
+const tabs = [
+  { id: "window", label: "Fenster" },
+  { id: "account", label: "Konto" },
+  { id: "keys", label: "Schlüssel" },
+] as const;
+type Tab = (typeof tabs)[number]["id"];
+const tabMoves: Record<string, (index: number) => number> = {
+  ArrowLeft: (index) => index - 1,
+  ArrowRight: (index) => index + 1,
+  Home: () => 0,
+  End: () => tabs.length - 1,
+};
+
+// Settings sheet of the connected workspace: window preferences, the synced Konto values and
+// the API keys. Needs the Convex client and the workspace's task actions.
+export function Settings({ onClose }: { onClose: () => void }) {
+  const keys = useQuery(api.auth.listApiKeys, {});
+  const [tab, setTab] = useState<Tab>("window");
+  // Id of the integration key created in this sheet, marked "neu" in the list.
+  const [freshKey, setFreshKey] = useState<string | null>(null);
+  const id = useId();
+  function moveTab(event: KeyboardEvent, index: number) {
+    const move = tabMoves[event.key];
+    if (!move) return;
+    event.preventDefault();
+    const next = tabs[(move(index) + tabs.length) % tabs.length]!;
+    setTab(next.id);
+    document.getElementById(`${id}-${next.id}`)?.focus();
+  }
+  return (
+    <Dialog title="Einstellungen" className="top" onClose={onClose}>
+      <div className="settings-tabs" role="tablist" aria-label="Einstellungen">
+        {tabs.map((item, index) => (
+          <button
+            key={item.id}
+            id={`${id}-${item.id}`}
+            role="tab"
+            aria-selected={tab === item.id}
+            aria-controls={`${id}-panel`}
+            tabIndex={tab === item.id ? 0 : -1}
+            onClick={() => setTab(item.id)}
+            onKeyDown={(event) => moveTab(event, index)}
+          >
+            {item.label}
+            {item.id === "keys" && keys && <span className="badge">{keys.length}</span>}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`${id}-panel`} aria-labelledby={`${id}-${tab}`}>
+        {tab === "window" ? (
+          <div className="window-settings">
+            <WindowPreferences />
+            <ShortcutHelp />
+            <DoneButton onClose={onClose} />
+          </div>
+        ) : tab === "account" ? (
+          <div className="window-settings">
+            <AccountTab />
+            <ConnectionDetails onClose={onClose} />
+          </div>
+        ) : (
+          <KeysTab keys={keys} fresh={freshKey} onCreated={setFreshKey} />
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+// Settings sheet before sign-in or when it fails (login, loading, "Noch keine Verbindung."):
+// window preferences only. A network drop keeps the full sheet with writes locked.
 export function WindowSettings({ onClose }: { onClose: () => void }) {
+  return (
+    <Dialog title="Einstellungen" className="top" onClose={onClose}>
+      <div className="window-settings">
+        <WindowPreferences />
+        <ConnectionDetails onClose={onClose} />
+        <ShortcutHelp />
+        <DoneButton onClose={onClose} />
+      </div>
+    </Dialog>
+  );
+}
+
+// Preferences of this Mac's window, stored by the main process.
+function WindowPreferences() {
   const { state, update } = usePlatform();
   const [shortcut, setShortcut] = useState(
     state?.preferences.shortcut ?? "CommandOrControl+Shift+Space",
   );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [disconnect, setDisconnect] = useState(false);
   async function save(patch: Partial<DesktopPreferences>) {
     if (pending) return;
     setPending(true);
@@ -155,156 +170,181 @@ export function WindowSettings({ onClose }: { onClose: () => void }) {
     }
   }
   return (
-    <Dialog title="Dein schwebendes Fenster" onClose={onClose}>
-      <div className="window-settings">
-        <label className="switch-field">
-          <span>
-            <Pin size={16} />
-            Immer im Vordergrund
-          </span>
-          <input
-            type="checkbox"
-            checked={state?.preferences.alwaysOnTop ?? true}
-            disabled={pending}
-            onChange={(event) => void save({ alwaysOnTop: event.target.checked })}
-          />
-        </label>
-        <label className="switch-field">
-          <span>
-            <Radio size={16} />
-            Auf allen Schreibtischen
-          </span>
-          <input
-            type="checkbox"
-            checked={state?.preferences.allSpaces ?? true}
-            disabled={pending}
-            onChange={(event) => void save({ allSpaces: event.target.checked })}
-          />
-        </label>
-        <p className="hint">
-          Auch über Apps im Vollbild sichtbar. Das Fenster bleibt beim Wechsel zu einer anderen App
-          stehen.
-        </p>
-        <label className="switch-field">
-          <span>Bei Anmeldung starten</span>
-          <input
-            type="checkbox"
-            checked={state?.preferences.launchAtLogin ?? false}
-            disabled={pending}
-            onChange={(event) => void save({ launchAtLogin: event.target.checked })}
-          />
-        </label>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save({ shortcut });
-          }}
-        >
-          <label className="field">
-            <span>Globaler Kurzbefehl</span>
-            <input
-              value={shortcut}
-              onChange={(event) => setShortcut(event.target.value)}
-              maxLength={80}
-              spellCheck={false}
-            />
-          </label>
-          <button
-            className="button secondary"
-            disabled={pending || shortcut === state?.preferences.shortcut}
-          >
-            Kurzbefehl speichern
-          </button>
-        </form>
+    <>
+      <label className="switch-field">
+        <span>
+          <Pin size={16} />
+          Immer im Vordergrund
+        </span>
+        <input
+          type="checkbox"
+          checked={state?.preferences.alwaysOnTop ?? true}
+          disabled={pending}
+          onChange={(event) => void save({ alwaysOnTop: event.target.checked })}
+        />
+      </label>
+      <label className="switch-field">
+        <span>
+          <Radio size={16} />
+          Auf allen Schreibtischen
+        </span>
+        <input
+          type="checkbox"
+          checked={state?.preferences.allSpaces ?? true}
+          disabled={pending}
+          onChange={(event) => void save({ allSpaces: event.target.checked })}
+        />
+      </label>
+      <p className="hint">
+        Auch über Apps im Vollbild sichtbar. Das Fenster bleibt beim Wechsel zu einer anderen App
+        stehen.
+      </p>
+      <label className="switch-field">
+        <span>Bei Anmeldung starten</span>
+        <input
+          type="checkbox"
+          checked={state?.preferences.launchAtLogin ?? false}
+          disabled={pending}
+          onChange={(event) => void save({ launchAtLogin: event.target.checked })}
+        />
+      </label>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save({ shortcut });
+        }}
+      >
         <label className="field">
-          <span>
-            <SlidersHorizontal size={14} />
-            Fensterfarbe
-          </span>
-          <select
-            value={state?.preferences.tint ?? "graphite"}
-            disabled={pending}
-            onChange={(event) =>
-              void save({ tint: event.target.value as DesktopPreferences["tint"] })
-            }
-          >
-            <option value="graphite">Graphit</option>
-            <option value="plum">Pflaume</option>
-            <option value="forest">Wald</option>
-          </select>
+          <span>Globaler Kurzbefehl</span>
+          <input
+            value={shortcut}
+            onChange={(event) => setShortcut(event.target.value)}
+            maxLength={80}
+            spellCheck={false}
+          />
         </label>
-        {error && (
-          <p className="error-text" role="alert">
-            {error}
-          </p>
-        )}
-        {state?.configured && (
-          <div className="connection-details">
-            <span>
-              <span className="status-dot" />
-              Verbunden
-            </span>
-            <code>{state.siteUrl}</code>
-            {disconnect ? (
-              <>
-                <p className="hint">
-                  Den gespeicherten Schlüssel von diesem Mac entfernen? Deine Aufgaben bleiben
-                  erhalten.
-                </p>
-                <div className="button-row">
-                  <button
-                    className="button danger"
-                    disabled={pending}
-                    onClick={() => {
-                      setPending(true);
-                      void window.desktop
-                        .disconnect()
-                        .then((next) => {
-                          update(next);
-                          onClose();
-                        })
-                        .catch(() => {
-                          setError("Die Verbindung konnte nicht entfernt werden.");
-                          setPending(false);
-                        });
-                    }}
-                  >
-                    Verbindung entfernen
-                  </button>
-                  <button className="button secondary" onClick={() => setDisconnect(false)}>
-                    Behalten
-                  </button>
-                </div>
-              </>
-            ) : (
-              <button className="text-button" onClick={() => setDisconnect(true)}>
-                <LogOut size={13} />
-                Verbindung entfernen
-              </button>
-            )}
-          </div>
-        )}
-        <div className="shortcut-help">
-          <span>
-            <kbd>⌘ 1–5</kbd>Bereich wechseln
-          </span>
-          <span>
-            <kbd>⌘ N</kbd>Neue Aufgabe
-          </span>
-          <span>
-            <kbd>⌘ ↵</kbd>Aufgabe erledigen
-          </span>
-          <span>
-            <kbd>⌥ ↑ ↓</kbd>Aufgabe verschieben
-          </span>
-          <span>
-            <kbd>Esc</kbd>Fenster ausblenden
-          </span>
-        </div>
-        <button className="button secondary" onClick={onClose}>
-          Fertig <ChevronDown size={14} />
+        <button
+          className="button secondary"
+          disabled={pending || shortcut === state?.preferences.shortcut}
+        >
+          Kurzbefehl speichern
         </button>
-      </div>
-    </Dialog>
+      </form>
+      <label className="field">
+        <span>
+          <SlidersHorizontal size={14} />
+          Fensterfarbe
+        </span>
+        <select
+          value={state?.preferences.tint ?? "graphite"}
+          disabled={pending}
+          onChange={(event) =>
+            void save({ tint: event.target.value as DesktopPreferences["tint"] })
+          }
+        >
+          <option value="graphite">Graphit</option>
+          <option value="plum">Pflaume</option>
+          <option value="forest">Wald</option>
+        </select>
+      </label>
+      {error && (
+        <p className="error-text" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}
+
+// Connection status. "Verbindung entfernen" revokes this Mac's device key and logs out.
+function ConnectionDetails({ onClose }: { onClose: () => void }) {
+  const { state, update } = usePlatform();
+  const [confirm, setConfirm] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!state?.configured) return null;
+  return (
+    <div className="connection-details">
+      <span>
+        <span className="status-dot" />
+        Verbunden
+      </span>
+      <code>{state.siteUrl}</code>
+      {confirm ? (
+        <>
+          <p className="hint">
+            Abmelden und den Geräteschlüssel dieses Macs widerrufen? Deine Aufgaben bleiben
+            erhalten.
+          </p>
+          <div className="button-row">
+            <button
+              className="button danger"
+              disabled={pending}
+              onClick={() => {
+                setPending(true);
+                setError(null);
+                void window.desktop
+                  .disconnect()
+                  .then((next) => {
+                    update(next);
+                    onClose();
+                  })
+                  .catch((cause: unknown) => {
+                    setError(
+                      ipcErrorMessage(cause, "Die Verbindung konnte nicht entfernt werden."),
+                    );
+                    setPending(false);
+                  });
+              }}
+            >
+              Verbindung entfernen
+            </button>
+            <button className="button secondary" onClick={() => setConfirm(false)}>
+              Behalten
+            </button>
+          </div>
+        </>
+      ) : (
+        <button className="text-button" onClick={() => setConfirm(true)}>
+          <LogOut size={13} />
+          Verbindung entfernen
+        </button>
+      )}
+      {error && (
+        <p className="error-text" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ShortcutHelp() {
+  return (
+    <div className="shortcut-help">
+      <span>
+        <kbd>⌘ 1–5</kbd>Bereich wechseln
+      </span>
+      <span>
+        <kbd>⌘ N</kbd>Neue Aufgabe
+      </span>
+      <span>
+        <kbd>⌘ ↵</kbd>Aufgabe erledigen
+      </span>
+      <span>
+        <kbd>⌥ ↑ ↓</kbd>Aufgabe verschieben
+      </span>
+      <span>
+        <kbd>Esc</kbd>Fenster ausblenden
+      </span>
+    </div>
+  );
+}
+
+function DoneButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button className="button secondary" onClick={onClose}>
+      Fertig <ChevronDown size={14} />
+    </button>
   );
 }

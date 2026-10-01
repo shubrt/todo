@@ -16,12 +16,6 @@ export function isTrustedRenderer(url: string, rendererFile: string, devOrigin?:
   }
 }
 
-export function validateConnectionInput(value: unknown): string {
-  if (typeof value !== "string" || value.length < 5 || value.length > 8192)
-    throw new Error("Die Verbindungsdaten sind ungültig.");
-  return value;
-}
-
 export function validateTokenOptions(value: unknown): { forceRefreshToken: boolean } {
   if (
     !value ||
@@ -33,4 +27,19 @@ export function validateTokenOptions(value: unknown): { forceRefreshToken: boole
   )
     throw new Error("Ungültige Tokenanfrage.");
   return { forceRefreshToken: value.forceRefreshToken };
+}
+
+/** Name for a new integration key: trimmed, 1 to 80 characters like the backend requires. */
+export function validateKeyName(value: unknown): string {
+  const name = typeof value === "string" ? value.trim() : "";
+  if (!name || name.length > 80)
+    throw new Error("Der Schlüsselname muss 1 bis 80 Zeichen lang sein.");
+  return name;
+}
+
+/** Text for the clipboard, e.g. a new integration key. At most 4096 characters. */
+export function validateClipboardText(value: unknown): string {
+  if (typeof value !== "string" || !value || value.length > 4096)
+    throw new Error("Dieser Text kann nicht kopiert werden.");
+  return value;
 }
