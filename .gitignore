@@ -25,22 +25,11 @@ yarn-error.log*
 dist/
 .cache
 
-# production build
-.output/
-
 # vite plus
 .vite/
-.tanstack/
 coverage/
 playwright-report/
 test-results/
 
-# Native generated projects and distribution artifacts
-apps/mobile/.expo/
-apps/mobile/ios/
-apps/mobile/android/
+# desktop distribution artifacts
 apps/desktop/release/
-*.xcuserstate
-**/xcuserdata/
-**/.gradle/
-**/build/

@@ -2,7 +2,6 @@ import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } 
 import { ConvexError } from "convex/values";
 
 export const SHOO_ISSUER = "https://shoo.dev";
-export const SESSION_DURATION = 30 * 24 * 60 * 60 * 1000;
 export const TOKEN_DURATION = 5 * 60 * 1000;
 const shooKeys = createRemoteJWKSet(new URL(`${SHOO_ISSUER}/.well-known/jwks.json`));
 
@@ -11,13 +10,10 @@ export async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function allowedOrigins(): string[] {
-  return (process.env.APP_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-}
-
+/**
+ * Maps a verified Shoo identity to TODO_OWNER_ID via SHOO_OWNER_SUBJECTS ({ origin: sub | sub[] }).
+ * Unmapped subjects get the exact entry to add, since Shoo's pairwise sub is only known after login.
+ */
 export function ownerForClaims(claims: JWTPayload, origin: string): string {
   let subjects: Record<string, unknown>;
   try {
@@ -25,17 +21,21 @@ export function ownerForClaims(claims: JWTPayload, origin: string): string {
   } catch {
     throw new ConvexError({ code: "NOT_CONFIGURED", message: "Die Besitzerzuordnung fehlt." });
   }
+  const sub = typeof claims.sub === "string" ? claims.sub : "";
   const allowed = subjects[origin];
   const matches =
-    typeof allowed === "string"
-      ? allowed === claims.sub
-      : Array.isArray(allowed) && allowed.includes(claims.sub);
-  const owner = process.env.TODO_OWNER_ID;
-  if (!owner || !matches || !claims.sub)
+    sub !== "" &&
+    (typeof allowed === "string"
+      ? allowed === sub
+      : Array.isArray(allowed) && allowed.includes(sub));
+  if (!matches)
     throw new ConvexError({
       code: "FORBIDDEN",
-      message: "Dieses Shoo-Konto ist nicht freigegeben.",
+      message: `Dieses Shoo-Konto ist nicht freigegeben. Zum Freischalten in SHOO_OWNER_SUBJECTS eintragen: ${JSON.stringify({ [origin]: sub })}`,
     });
+  const owner = process.env.TODO_OWNER_ID;
+  if (!owner)
+    throw new ConvexError({ code: "NOT_CONFIGURED", message: "TODO_OWNER_ID ist nicht gesetzt." });
   return owner;
 }
 

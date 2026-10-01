@@ -21,7 +21,7 @@ export class DesktopErrorBoundary extends Component<{ children: ReactNode }, { f
                 void window.desktop.disconnect().then(() => window.location.reload());
               }}
             >
-              Mit einem neuen Schlüssel verbinden
+              Abmelden und neu anmelden
             </button>
           </div>
         </div>

@@ -1,9 +1,0 @@
-{
-  "extends": "@todo/tsconfig/react.json",
-  "compilerOptions": {
-    "types": ["vite-plus/client", "node"],
-    "paths": { "~/*": ["./src/*"] }
-  },
-  "include": ["src", "vite.config.ts", "test"],
-  "exclude": ["node_modules", "dist", ".output"]
-}

@@ -3,7 +3,10 @@ import type { DesktopBridge, DesktopView, PublicDesktopState } from "../shared/c
 
 const bridge: DesktopBridge = {
   getState: () => ipcRenderer.invoke("desktop:state"),
-  connect: (input) => ipcRenderer.invoke("desktop:connect", input),
+  login: () => ipcRenderer.invoke("desktop:login"),
+  cancelLogin: () => ipcRenderer.invoke("desktop:cancel-login"),
+  createIntegrationKey: (name) => ipcRenderer.invoke("desktop:create-key", name),
+  copyText: (text) => ipcRenderer.invoke("desktop:copy", text),
   disconnect: () => ipcRenderer.invoke("desktop:disconnect"),
   fetchAccessToken: (options) => ipcRenderer.invoke("desktop:token", options),
   setPreferences: (patch) => ipcRenderer.invoke("desktop:preferences", patch),

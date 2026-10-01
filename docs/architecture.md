@@ -1,49 +1,69 @@
 # Architektur
 
-| Paket                | Aufgabe                                                                         |
-| -------------------- | ------------------------------------------------------------------------------- |
-| `apps/web`           | React, TanStack Start, responsive Oberfläche und Shoo-Loginrouten               |
-| `apps/desktop`       | Electron-Menüleisten-App, schwebendes macOS-Fenster und sicherer Gerätespeicher |
-| `apps/mobile`        | Expo/React Native sowie native Habit-Widgets und Live-Anzeigen                  |
-| `libs/backend`       | Convex-Datenmodell, Fachoperationen, Autorisierung, HTTP-API und Zeitsteuerung  |
-| `libs/contracts`     | Validierte externe Eingaben und gemeinsame Typen                                |
-| `libs/native-client` | Geräteverbindungen, Token-Erneuerung und Habit-HTTP-Zugriff                     |
-| `libs/logging`       | Strukturierte Console-Ereignisse und serverseitiger evlog-/Axiom-Adapter        |
-| `tools/typescript`   | Gemeinsame TypeScript-Konfiguration                                             |
+| Paket                | Aufgabe                                                                        |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `apps/desktop`       | Electron-Menüleisten-App, schwebendes macOS-Fenster, Anmeldung, Gerätespeicher |
+| `libs/backend`       | Convex-Datenmodell, Fachoperationen, Autorisierung, HTTP-API und Zeitsteuerung |
+| `libs/contracts`     | Validierte externe Eingaben und gemeinsame Typen                               |
+| `libs/native-client` | Verbindungsdaten, Adressprüfung und Token-Erneuerung                           |
+| `libs/logging`       | Strukturierte Console-Ereignisse für Convex                                    |
+| `tools/typescript`   | Gemeinsame TypeScript-Konfiguration                                            |
 
-Die Web-App abonniert Convex-Queries direkt. Änderungen über externe HTTP
-Actions verwenden dieselben fachlichen Mutationen und aktualisieren damit
-auch geöffnete Webclients. TanStack Start stellt Login- und Sessionrouten
-bereit. Nitro erzeugt einen später auf Railway ausführbaren Node-Server.
+Der Renderer der Desktop-App abonniert Convex-Queries direkt. Die HTTP-API
+verwendet dieselben fachlichen Mutationen. Eine Änderung über die API erscheint
+deshalb sofort im geöffneten Fenster.
 
 ## Identität
 
-Shoo Authorization Code mit PKCE und State führt zu einer eigenen App-Sitzung.
-Convex prüft den Shoo-Nachweis selbst. Nur explizit konfigurierte Shoo-Subjects
-werden derselben internen Owner-ID zugeordnet. Die Konfiguration berücksichtigt,
-dass Shoo für verschiedene Origins verschiedene Subjects ausstellen kann.
+Die Desktop-App meldet sich bei Shoo per Authorization Code mit PKCE an. Shoo
+leitet die `client_id` aus der Origin der Redirect-URI ab und vergibt pro
+Origin ein eigenes `sub`. Ein Custom Scheme wie `todo://` hat die Origin
+`null`. Ein zufälliger Loopback-Port würde die Origin und damit das `sub` bei
+jeder Anmeldung ändern. Die Redirect-URI ist deshalb ein fester HTTPS-Endpunkt
+auf der Convex-Site, `<site>/auth/desktop/callback`. Er prüft nur das Format
+des State und leitet den Browser an den Loopback-Listener der App weiter. Den
+Code tauscht er nicht ein, denn den PKCE-Verifier kennt nur die App. Erst
+`POST /auth/desktop-login` erhält Code und Verifier zusammen. Ein abgefangener
+Code allein nützt nichts.
 
-Der Browser hält das zufällige Sitzungstoken in einem HttpOnly-Cookie. Convex
-speichert ausschließlich dessen Hash. Ein kurzlebiges ES256-JWT verbindet den
-reaktiven Client mit der Sitzung. Jede öffentliche Fachfunktion prüft den
-Owner und die aktive Sitzung. Das Lesen der Sitzung gehört zu den reaktiven
-Abhängigkeiten, damit ein Widerruf bestehende Abonnements invalidiert.
+Convex tauscht den Code bei Shoo ein und prüft das ID-Token selbst.
+`SHOO_OWNER_SUBJECTS` ordnet das `sub` für die Site-Origin der internen
+Owner-ID aus `TODO_OWNER_ID` zu. Ohne Eintrag weist das Backend die Anmeldung
+ab. Mit Eintrag legt es einen Schlüssel `todo_…` an und gibt ihn genau einmal
+zurück. Gespeichert werden nur SHA-256-Hash, sichtbares Präfix, Name und Art
+(`kind`). Eine normale Anmeldung erzeugt einen Geräteschlüssel (`device`).
+Mit `kind: "integration"` entsteht ein Integrationsschlüssel für ein Werkzeug.
+Die App verlangt dafür eine frische Shoo-Anmeldung, damit ein gestohlener
+Geräteschlüssel allein keine dauerhaften Schlüssel erzeugen kann. Schlüssel
+aus der Zeit vor den Arten haben kein `kind` und verhalten sich wie
+Geräteschlüssel. Höchstens 30 Schlüssel aller Arten dürfen gleichzeitig aktiv
+sein. Widerrufene und abgelaufene zählen nicht mit.
 
-Benannte API-Schlüssel bilden einen separaten Zugangsweg für Integrationen.
-Ihr vollständiger Wert erscheint nur bei der Erzeugung. Der Backendbestand
-enthält den Hash und das sichtbare Präfix. Deployment-Schlüssel gehören nicht
-zum laufenden Webserver oder zu externen Aufgabenintegrationen.
+Für Convex-Abonnements tauscht die App den Schlüssel über
+`POST /auth/device-token` gegen ein ES256-JWT mit `apiKeyId`, das höchstens
+fünf Minuten gilt. Öffentliche Fachfunktionen akzeptieren nur solche
+Geräte-JWTs und lesen die Schlüsselzeile bei jedem Zugriff. Ein Widerruf
+beendet dadurch auch laufende Abonnements. Browser-Sitzungen gibt es nicht.
+Integrationsschlüssel bekommen an `/auth/device-token` HTTP 403 und damit nie
+ein JWT. Ein entwendeter Integrationsschlüssel kann deshalb keine anderen
+Schlüssel lesen oder widerrufen.
 
-Mobile und Desktop tauschen ihren jeweiligen Geräteschlüssel gegen ein
-höchstens fünf Minuten gültiges JWT mit `apiKeyId` ein. Fachfunktionen lesen
-den Schlüssel bei jedem Zugriff; Widerruf und Ablauf invalidieren auch
-aktive Abonnements. Die Schlüsselverwaltung selbst erfordert weiterhin
-eine Browser-Sitzung. Details stehen in [Geräteanmeldung](native-api.md).
+Die HTTP-API unter `/api/v1` nimmt alle drei Arten direkt als Bearer-Token.
+Deployment-Schlüssel gehören weder in die App noch in Integrationen.
 
-Die offenen nativen Clients abonnieren Convex wie die Web-App. Habit-Widgets
-verwenden native HTTP-Aufrufe und einen abgeleiteten, datierten Snapshot.
-Das ist kein zweiter Aufgabenbestand. Die [Widget-Dokumentation](habit-surfaces.md)
-beschreibt Hintergrundaktualisierung, sichere Speicherung und Tageswechsel.
+Die Schlüsselliste der App liest die Query `auth.listApiKeys`. Sie liefert die
+aktiven Schlüssel des Besitzers, neueste zuerst, mit `id`, `name`, `prefix`,
+`kind`, `createdAt`, `lastUsedAt` und `current` für den Schlüssel der
+aufrufenden App, aber ohne Hashes. `lastUsedAt` setzen Token-Abrufe,
+API-Schreibbefehle und der Habit-Stand, höchstens einmal pro Stunde. Lesende
+API-Aufrufe ändern es nicht.
+Die Mutation `auth.revokeApiKey` widerruft einen Schlüssel per `id`. Für einen
+schon widerrufenen Schlüssel ändert sie nichts. Den Schlüssel der aufrufenden
+App lehnt sie mit `INVALID_INPUT` ab, dafür gibt es "Verbindung entfernen".
+Beide Funktionen prüfen das Geräte-JWT wie `requireOwner` und arbeiten nur
+auf Schlüsseln desselben Besitzers. Anmeldung und Schlüsselverwaltung aus
+Sicht der App beschreibt die Desktop-Dokumentation unter
+[Anmelden](desktop.md#anmelden) und [Schlüssel](desktop.md#schlüssel).
 
 ## Aufgaben, Historie und Zeit
 
@@ -91,11 +111,10 @@ Haupttasks und liefern deren Kinder zusammen mit dem Parent.
 ## Diagnose
 
 Logs erlauben Operation, Ergebnis, Request-ID, Task-ID, Dauer, Fehlercode und
-Periode. Aufgabentitel, Bodies, Cookies und Schlüssel gehören nicht zum
-Ereignisvertrag. Der Node-Adapter initialisiert evlog einmal und aktiviert
-Axiom nur bei gesetzter Konfiguration. Der Convex-Adapter verwendet ausschließlich
-strukturierte Console-Ausgabe und hat keine Node- oder Netzwerkabhängigkeit.
+Periode. Aufgabentitel, Bodies und Schlüssel gehören nicht zum
+Ereignisvertrag. `@todo/logging` schreibt ausschließlich strukturierte
+Console-Ausgabe und hat keine Node- oder Netzwerkabhängigkeit.
 
-Die fachliche Historie hängt weder von Axiom noch von der Logaufbewahrung ab.
-Ein nativer Convex-Log-Stream kann bei der späteren Inbetriebnahme gewählt werden.
-Diese Implementierung bucht keinen Tarif und erzeugt keine Cloud-Umgebung.
+Die fachliche Historie hängt nicht von der Logaufbewahrung ab. Einen
+Convex-Log-Stream kann man bei der späteren Inbetriebnahme wählen. Diese
+Implementierung bucht keinen Tarif und erzeugt keine Cloud-Umgebung.

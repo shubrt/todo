@@ -14,7 +14,6 @@ catalog:
   convex-test: 0.0.56
   zod: 4.5.4
   jose: 6.2.11
-  evlog: 2.28.1
   "@edge-runtime/vm": 5.0.0
   "@types/node": 24.13.3
   react: 19.2.3

@@ -16,18 +16,21 @@ import {
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { DesktopView } from "../shared/contracts";
 import { ConnectedProvider, PlatformProvider, usePlatform } from "./platform";
-import { ConnectionForm, WindowSettings } from "./settings";
-import { TaskContext, useTasks, type Area, type Task } from "./task-context";
+import { RecurrencesView } from "./recurrences";
+import { ConnectionForm, Settings, WindowSettings } from "./settings";
+import { areaSymbols, TaskContext, useTasks, type Area, type Task } from "./task-context";
 import { TaskSection } from "./task-list";
 import { TaskDetail } from "./task-detail";
 import { dayLabel, safeError } from "./ui";
 
+// The first five have ⌘1–5.
 const views: { id: DesktopView; label: string; symbol: string }[] = [
   { id: "priority", label: "Priorität", symbol: "✦" },
-  { id: "me", label: "me", symbol: "◌" },
-  { id: "agency", label: "agency", symbol: "❋" },
-  { id: "work", label: "work", symbol: "▧" },
+  { id: "me", label: "me", symbol: areaSymbols.me },
+  { id: "agency", label: "agency", symbol: areaSymbols.agency },
+  { id: "work", label: "work", symbol: areaSymbols.work },
   { id: "habits", label: "Habits", symbol: "↻" },
+  { id: "recurrences", label: "Wiederholungen", symbol: "∞" },
   { id: "history", label: "Verlauf", symbol: "◷" },
 ];
 
@@ -45,6 +48,9 @@ function AppFrame() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [retry, setRetry] = useState(0);
   const [connecting, setConnecting] = useState(false);
+  const closeSettings = () => setSettingsOpen(false);
+  // Inside the Convex provider, Authenticated renders the settings sheet itself.
+  const withProvider = Boolean(!error && state?.configured && state.cloudUrl && !connecting);
   useEffect(() => {
     const stop = window.desktop?.onNavigate((next) => {
       setView(next);
@@ -106,8 +112,8 @@ function AppFrame() {
           </button>
           <button
             className="icon"
-            title="Fenstereinstellungen · ⌘,"
-            aria-label="Fenstereinstellungen"
+            title="Einstellungen · ⌘,"
+            aria-label="Einstellungen"
             onClick={() => setSettingsOpen(true)}
           >
             <Settings2 size={14} />
@@ -139,62 +145,91 @@ function AppFrame() {
               setView={setView}
               reconnect={() => setRetry((value) => value + 1)}
               connect={() => setConnecting(true)}
+              settingsOpen={settingsOpen}
+              closeSettings={closeSettings}
             />
           </ConnectedProvider>
         )}
       </div>
-      {settingsOpen && <WindowSettings onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && !withProvider && <WindowSettings onClose={closeSettings} />}
     </div>
   );
 }
 
+// Settings with the Konto and Schlüssel tabs need the workspace; until then only the window ones.
 function Authenticated({
   view,
   setView,
   reconnect,
   connect,
+  settingsOpen,
+  closeSettings,
 }: {
   view: DesktopView;
   setView: (view: DesktopView) => void;
   reconnect: () => void;
   connect: () => void;
+  settingsOpen: boolean;
+  closeSettings: () => void;
 }) {
   const { isLoading, isAuthenticated } = useConvexAuth();
   const platform = usePlatform();
-  if (isLoading)
+  if (isLoading || !isAuthenticated)
     return (
-      <div className="loading">
-        <LoaderCircle size={18} className="spin" />
-        Aufgaben werden verbunden …
-      </div>
+      <>
+        {isLoading ? (
+          <div className="loading">
+            <LoaderCircle size={18} className="spin" />
+            Aufgaben werden verbunden …
+          </div>
+        ) : (
+          <div className="connection-form">
+            <div className="connect-symbol">
+              <WifiOff size={22} />
+            </div>
+            <h1>Noch keine Verbindung.</h1>
+            <p>{platform.state?.error ?? "Deine Aufgaben sind gerade nicht erreichbar."}</p>
+            <button className="button primary" onClick={reconnect}>
+              Erneut verbinden
+            </button>
+            <button className="text-button" onClick={connect}>
+              Neu anmelden
+            </button>
+          </div>
+        )}
+        {settingsOpen && <WindowSettings onClose={closeSettings} />}
+      </>
     );
-  if (!isAuthenticated)
-    return (
-      <div className="connection-form">
-        <div className="connect-symbol">
-          <WifiOff size={22} />
-        </div>
-        <h1>Noch keine Verbindung.</h1>
-        <p>{platform.state?.error ?? "Deine Aufgaben sind gerade nicht erreichbar."}</p>
-        <button className="button primary" onClick={reconnect}>
-          Erneut verbinden
-        </button>
-        <button className="text-button" onClick={connect}>
-          Neuen Geräteschlüssel verwenden
-        </button>
-      </div>
-    );
-  return <Workspace view={view} setView={setView} />;
+  return (
+    <Workspace
+      view={view}
+      setView={setView}
+      settingsOpen={settingsOpen}
+      closeSettings={closeSettings}
+    />
+  );
 }
 
-function Workspace({ view, setView }: { view: DesktopView; setView: (view: DesktopView) => void }) {
+function Workspace({
+  view,
+  setView,
+  settingsOpen,
+  closeSettings,
+}: {
+  view: DesktopView;
+  setView: (view: DesktopView) => void;
+  settingsOpen: boolean;
+  closeSettings: () => void;
+}) {
   const connected = useConvexConnectionState().isWebSocketConnected;
   const settings = useQuery(api.settings.get, {});
   const summary = useQuery(api.tasks.summary, {});
   const isArea = view === "me" || view === "agency" || view === "work";
+  // No quick capture here; ⌘N switches to the default area first.
+  const readOnly = view === "recurrences" || view === "history";
   const tasks = useQuery(
     api.tasks.list,
-    view === "history" ? "skip" : isArea ? { view: "area", area: view } : { view },
+    readOnly ? "skip" : isArea ? { view: "area", area: view } : { view },
   );
   const deferred = useQuery(api.tasks.deferred, isArea ? { area: view } : "skip");
   const complete = useMutation(api.tasks.complete);
@@ -227,7 +262,7 @@ function Workspace({ view, setView }: { view: DesktopView; setView: (view: Deskt
         !document.querySelector("dialog[open]")
       ) {
         event.preventDefault();
-        if (view === "history") {
+        if (readOnly) {
           setView(settings?.defaultArea ?? "me");
           setTimeout(() => input.current?.focus(), 0);
         } else input.current?.focus();
@@ -235,12 +270,18 @@ function Workspace({ view, setView }: { view: DesktopView; setView: (view: Deskt
     };
     document.addEventListener("keydown", keyboard);
     return () => document.removeEventListener("keydown", keyboard);
-  }, [view, setView, settings?.defaultArea]);
+  }, [readOnly, setView, settings?.defaultArea]);
   const run = useCallback(
-    async (key: string, action: () => Promise<unknown>, success?: string) => {
+    async (
+      key: string,
+      action: () => Promise<unknown>,
+      success?: string,
+      onError?: (message: string) => void,
+    ) => {
       if (pendingRef.current.has(key)) return false;
+      const fail = onError ?? ((text: string) => setMessage({ text, error: true }));
       if (!connected) {
-        setMessage({ text: "Warte kurz, bis die Verbindung wieder steht.", error: true });
+        fail("Warte kurz, bis die Verbindung wieder steht.");
         return false;
       }
       pendingRef.current.add(key);
@@ -250,7 +291,7 @@ function Workspace({ view, setView }: { view: DesktopView; setView: (view: Deskt
         if (success) setMessage({ text: success, error: false });
         return true;
       } catch (cause) {
-        setMessage({ text: safeError(cause), error: true });
+        fail(safeError(cause));
         return false;
       } finally {
         pendingRef.current.delete(key);
@@ -350,6 +391,8 @@ function Workspace({ view, setView }: { view: DesktopView; setView: (view: Deskt
         )}
         {view === "history" ? (
           <HistoryView />
+        ) : view === "recurrences" ? (
+          <RecurrencesView />
         ) : view === "habits" && settings && !settings.habitsInitialized ? (
           <HabitSetup />
         ) : (
@@ -475,6 +518,7 @@ function Workspace({ view, setView }: { view: DesktopView; setView: (view: Deskt
           onClose={() => setSelectedTask(null)}
         />
       )}
+      {settingsOpen && <Settings onClose={closeSettings} />}
     </TaskContext.Provider>
   );
 }

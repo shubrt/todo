@@ -1,28 +1,45 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
   safeStorage,
   screen,
+  shell,
   Tray,
   type IpcMainInvokeEvent,
 } from "electron";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   cloudUrlFromSite,
   createTokenProvider,
+  loginDevice,
+  NativeApiError,
   parseConnection,
+  revokeDevice,
   type Connection,
   type TokenProvider,
 } from "@todo/native-client";
-import type { DesktopPreferences, DesktopView, PublicDesktopState } from "../shared/contracts";
+import type {
+  CreatedIntegrationKey,
+  DesktopPreferences,
+  DesktopView,
+  PublicDesktopState,
+} from "../shared/contracts";
 import { ConnectionStore } from "./connection-store";
-import { isTrustedRenderer, validateConnectionInput, validateTokenOptions } from "./security";
+import { LoginError, resolveSiteUrl, ShooLogin } from "./login";
+import {
+  isTrustedRenderer,
+  validateClipboardText,
+  validateKeyName,
+  validateTokenOptions,
+} from "./security";
 import {
   defaultPreferences,
   loadPreferences,
@@ -32,6 +49,8 @@ import {
 } from "./window-state";
 
 declare const __TODO_VARIANT__: string;
+// Convex HTTP site from CONVEX_SITE_URL at build time ("" when unset). See scripts/build.mjs.
+declare const __TODO_SITE_URL__: string;
 
 // Dev runs and branch packages are variants with their own name, data directory, and instance lock.
 const variant = __TODO_VARIANT__ || undefined;
@@ -50,7 +69,7 @@ let store: ConnectionStore;
 let stateError: string | undefined;
 let quitting = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
-let connecting = false;
+const shooLogin = new ShooLogin((url) => shell.openExternal(url));
 
 app.setName(appName);
 if (variant) app.setPath("userData", join(app.getPath("appData"), `todo-${variant}`));
@@ -137,7 +156,7 @@ async function start() {
     }
   } catch {
     stateError =
-      "Die gespeicherte Verbindung konnte nicht geöffnet werden. Entsperre den Schlüsselbund oder verbinde die App erneut.";
+      "Die gespeicherte Verbindung konnte nicht geöffnet werden. Entsperre den Schlüsselbund oder melde dich erneut an.";
   }
 
   if (process.platform === "darwin") app.dock?.hide();
@@ -180,6 +199,8 @@ async function start() {
     if (!isTrustedRenderer(url, rendererFile, devOrigin)) event.preventDefault();
   });
   mainWindow.webContents.on("will-attach-webview", (event) => event.preventDefault());
+  // A reload drops the view that waits for the browser login, so cancel the login as well.
+  mainWindow.webContents.on("did-start-loading", () => shooLogin.cancel());
   mainWindow.webContents.session.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false),
   );
@@ -211,7 +232,7 @@ async function start() {
   // Variants skip the startup shortcut so they never take it from the regular app.
   if (!variant && !globalShortcut.register(preferences.shortcut, toggleWindow))
     stateError =
-      "Der globale Kurzbefehl ist bereits belegt. Wähle in den Fenstereinstellungen einen anderen.";
+      "Der globale Kurzbefehl ist bereits belegt. Wähle unter Einstellungen > Fenster einen anderen.";
   tray = new Tray(nativeImage.createEmpty());
   tray.setTitle(variant ? `✓ ${variant}` : "✓");
   tray.setToolTip(`${appName} · Deine Aufgaben im Blick`);
@@ -224,37 +245,87 @@ async function start() {
 
 function registerIpc() {
   handle("desktop:state", () => publicState());
-  handle("desktop:connect", async (input) => {
-    if (connecting) throw new Error("Eine Verbindung wird bereits geprüft.");
-    connecting = true;
+  handle("desktop:login", async () => {
     try {
-      const candidate = parseConnection(validateConnectionInput(input));
-      const provider = createTokenProvider(candidate);
-      const token = await provider({ forceRefreshToken: true });
-      if (!token) throw new Error("Der Schlüssel ist ungültig oder wurde widerrufen.");
-      await store.write(JSON.stringify(candidate));
-      connection = candidate;
-      tokenProvider = provider;
-      stateError = undefined;
-      broadcast();
-      return publicState();
+      const siteUrl = resolveSiteUrl(__TODO_SITE_URL__);
+      return await shooLogin.run(siteUrl, async ({ code, codeVerifier }, checkCancelled) => {
+        const device = await loginDevice(siteUrl, {
+          code,
+          codeVerifier,
+          deviceName: `${appName} auf ${hostname()}`.slice(0, 80),
+        });
+        const candidate: Connection = { siteUrl, apiKey: device.key };
+        try {
+          const provider = createTokenProvider(candidate);
+          if (!(await provider({ forceRefreshToken: true })))
+            throw new LoginError(
+              "Der neue Geräteschlüssel wurde nicht angenommen. Melde dich erneut an.",
+            );
+          // Last point to cancel: once the key is written, the login counts.
+          checkCancelled();
+          await store.write(JSON.stringify(candidate));
+          const previous = connection;
+          connection = candidate;
+          tokenProvider = provider;
+          stateError = undefined;
+          // A replaced key would otherwise stay active and count toward the backend's key limit.
+          if (previous && previous.apiKey !== candidate.apiKey)
+            void revokeDevice(previous).catch(() => {});
+          broadcast();
+          return publicState();
+        } catch (cause) {
+          if (connection !== candidate) void revokeDevice(candidate).catch(() => {});
+          throw cause;
+        }
+      });
     } catch (cause) {
-      if (
-        cause instanceof Error &&
-        /Schlüsselbund|Schlüssel ist ungültig|Verbindungsdaten|HTTPS|convex\.site|API-Schlüssel/.test(
-          cause.message,
-        )
-      )
-        throw cause;
-      throw new Error(
-        "Die Verbindung konnte nicht hergestellt werden. Prüfe URL, Schlüssel und deine Internetverbindung.",
-      );
+      throw new Error(loginErrorMessage(cause));
     } finally {
-      connecting = false;
+      showWindow();
     }
   });
+  // Step-up: an integration key needs a fresh Shoo login, so a stolen device key alone cannot
+  // mint durable keys. The key goes to the renderer once and is neither logged nor stored here.
+  handle("desktop:create-key", async (input) => {
+    const name = validateKeyName(input);
+    try {
+      const siteUrl = resolveSiteUrl(__TODO_SITE_URL__);
+      if (connection?.siteUrl !== siteUrl) throw new LoginError("Melde dich zuerst in todo an.");
+      return await shooLogin.run(
+        siteUrl,
+        async ({ code, codeVerifier }, checkCancelled): Promise<CreatedIntegrationKey> => {
+          const created = await loginDevice(siteUrl, {
+            code,
+            codeVerifier,
+            deviceName: name,
+            kind: "integration",
+          });
+          try {
+            checkCancelled();
+          } catch (cause) {
+            // Nobody gets to see this key, so it must not stay active.
+            void revokeDevice({ siteUrl, apiKey: created.key }).catch(() => {});
+            throw cause;
+          }
+          return { id: created.id, name, prefix: created.prefix, key: created.key };
+        },
+      );
+    } catch (cause) {
+      throw new Error(loginErrorMessage(cause));
+    } finally {
+      showWindow();
+    }
+  });
+  handle("desktop:cancel-login", () => {
+    shooLogin.cancel();
+  });
+  handle("desktop:copy", async (input) => {
+    await clipboard.writeText(validateClipboardText(input));
+  });
   handle("desktop:disconnect", async () => {
-    if (connecting) throw new Error("Warte, bis die Verbindungsprüfung abgeschlossen ist.");
+    if (shooLogin.active) throw new Error("Warte, bis die Anmeldung abgeschlossen ist.");
+    // Best effort: an unreachable backend must not keep the key on this Mac.
+    if (connection) await revokeDevice(connection).catch(() => {});
     await store.clear();
     connection = null;
     tokenProvider = null;
@@ -270,7 +341,7 @@ function registerIpc() {
       const token = await tokenProvider(options);
       stateError = token
         ? undefined
-        : "Der Geräteschlüssel ist abgelaufen oder wurde widerrufen. Verbinde die App mit einem neuen Schlüssel.";
+        : "Der Geräteschlüssel ist abgelaufen oder wurde widerrufen. Melde dich erneut an.";
       if (!token) broadcast();
       return token;
     } catch {
@@ -311,6 +382,15 @@ function registerIpc() {
   handle("desktop:hide", () => window?.hide());
 }
 
+// Login and key creation errors shown in the window. NativeApiError messages are German and
+// never echo a credential; for the login exchange they are the backend's own text, e.g. the
+// missing SHOO_OWNER_SUBJECTS entry (403) or the 30-active-keys limit (400).
+function loginErrorMessage(cause: unknown): string {
+  if (cause instanceof LoginError || cause instanceof NativeApiError) return cause.message;
+  if (cause instanceof Error && /Schlüsselbund/.test(cause.message)) return cause.message;
+  return "Die Anmeldung ist fehlgeschlagen. Prüfe deine Internetverbindung und versuche es erneut.";
+}
+
 function applyWindowPreferences() {
   window?.setAlwaysOnTop(preferences.alwaysOnTop, "floating");
   window?.setVisibleOnAllWorkspaces(preferences.allSpaces, {
@@ -345,6 +425,7 @@ function updateMenu() {
         accelerator: `CommandOrControl+${index + 1}`,
         click: () => navigate(view),
       })),
+      { label: "Wiederholungen", click: () => navigate("recurrences") },
       { label: "Verlauf", click: () => navigate("history") },
       { type: "separator" },
       {

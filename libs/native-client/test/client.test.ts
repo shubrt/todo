@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   cloudUrlFromSite,
-  completeHabit,
   createTokenProvider,
-  fetchHabitSnapshot,
+  loginDevice,
   NativeApiError,
   normalizeSiteUrl,
   parseConnection,
+  revokeDevice,
 } from "../src/index";
 
 const connection = {
@@ -19,23 +19,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("connection onboarding", () => {
-  it("accepts JSON and local QR fragments while preserving the deployment region", () => {
-    const json = JSON.stringify(connection);
-    expect(parseConnection(json)).toEqual(connection);
-    expect(parseConnection(`todo://connect#${encodeURIComponent(json)}`)).toEqual(connection);
-    expect(
-      parseConnection(
-        `todo://connect#${btoa(json).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}`,
-      ),
-    ).toEqual(connection);
+describe("stored connection", () => {
+  it("accepts the stored JSON while preserving the deployment region", () => {
+    expect(parseConnection(JSON.stringify(connection))).toEqual(connection);
     expect(normalizeSiteUrl(`${connection.siteUrl}/`)).toBe(connection.siteUrl);
     expect(cloudUrlFromSite(connection.siteUrl)).toBe(
       "https://test-deployment.eu-west-1.convex.cloud",
     );
   });
 
-  it("rejects credential-bearing URLs, foreign hosts, deployment keys and malformed QR data without echoing secrets", () => {
+  it("rejects credential-bearing URLs, foreign hosts, deployment keys and connect links without echoing secrets", () => {
     for (const siteUrl of [
       "http://test-deployment.convex.site",
       "https://user:pass@test-deployment.convex.site",
@@ -50,7 +43,7 @@ describe("connection onboarding", () => {
       );
     for (const input of [
       "secret text",
-      `todo://connect?key=${connection.apiKey}`,
+      `todo://connect#${encodeURIComponent(JSON.stringify(connection))}`,
       JSON.stringify({ ...connection, apiKey: "prod:deployment|secret" }),
       JSON.stringify({ ...connection, ownerId: "other" }),
     ]) {
@@ -62,6 +55,75 @@ describe("connection onboarding", () => {
         expect((error as Error).message).not.toContain(connection.apiKey);
       }
     }
+  });
+});
+
+describe("device login", () => {
+  const login = { code: "shoo-code", codeVerifier: "v".repeat(64), deviceName: "todo auf Mac" };
+
+  it("exchanges the Shoo code without a key and validates the returned device key", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({ key: connection.apiKey, prefix: "todo_kkkkkkkk", id: "key1" }),
+      )
+      .mockResolvedValueOnce(Response.json({ key: "prod:deployment|secret", prefix: "", id: "" }));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await loginDevice(`${connection.siteUrl}/`, login)).toEqual({
+      key: connection.apiKey,
+      prefix: "todo_kkkkkkkk",
+      id: "key1",
+    });
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${connection.siteUrl}/auth/desktop-login`);
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).has("authorization")).toBe(false);
+    expect(new Headers(init.headers).get("content-type")).toBe("application/json");
+    expect(JSON.parse(init.body as string)).toEqual(login);
+    await expect(loginDevice(connection.siteUrl, login)).rejects.toMatchObject({
+      code: "INVALID_RESPONSE",
+    });
+  });
+
+  it("sends the requested key kind", async () => {
+    const fetcher = vi.fn(async () =>
+      Response.json({ key: connection.apiKey, prefix: "todo_kkkkkkkk", id: "key2" }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    await loginDevice(connection.siteUrl, { ...login, kind: "integration" });
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ ...login, kind: "integration" });
+  });
+
+  it("keeps the backend's setup hint for an unmapped Shoo account", async () => {
+    const hint = 'Trage {"https://test.convex.site":"sub-123"} in SHOO_OWNER_SUBJECTS ein.';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: { code: "FORBIDDEN", message: hint } }, { status: 403 }),
+      ),
+    );
+    await expect(loginDevice(connection.siteUrl, login)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+      message: hint,
+    });
+  });
+
+  it("revokes exactly the stored key", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ revoked: true }))
+      .mockResolvedValueOnce(
+        Response.json({ error: { code: "UNAUTHENTICATED", message: "x" } }, { status: 401 }),
+      );
+    vi.stubGlobal("fetch", fetcher);
+    await revokeDevice(connection);
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${connection.siteUrl}/auth/device-revoke`);
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("authorization")).toBe(`Bearer ${connection.apiKey}`);
+    await expect(revokeDevice(connection)).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
   });
 });
 
@@ -119,86 +181,44 @@ describe("memory token provider", () => {
       createTokenProvider(connection)({ forceRefreshToken: false }),
     ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
-});
 
-describe("widget client", () => {
-  it("validates and unwraps a complete snapshot", async () => {
-    const snapshot = {
-      generatedAt: Date.now(),
-      localDate: "2026-09-05",
-      timeZone: "Europe/Berlin",
-      nextResetAt: Date.now() + 60_000,
-      habits: [{ id: "habit1", title: "Read", completed: false, occurrenceKey: "2026-09-05" }],
-      completedCount: 0,
-      totalCount: 1,
-    };
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(Response.json({ data: snapshot, requestId: "one" }))
-      .mockResolvedValueOnce(Response.json({ data: { habits: [] } }));
-    vi.stubGlobal("fetch", fetcher);
-    expect(await fetchHabitSnapshot(connection)).toEqual(snapshot);
-    expect(fetcher.mock.calls[0]?.[0]).toBe(`${connection.siteUrl}/api/v1/habits/snapshot`);
-    await expect(fetchHabitSnapshot(connection)).rejects.toMatchObject({
-      code: "INVALID_RESPONSE",
-    });
-  });
-
-  it("retries an uncertain completion with exactly the same command identity and occurrence", async () => {
-    const fetcher = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("connection lost after commit"))
-      .mockResolvedValueOnce(Response.json({ data: { id: "habit1" } }));
-    vi.stubGlobal("fetch", fetcher);
-    expect(await completeHabit(connection, "habit1", "2026-09-05", "saved-command-uuid")).toEqual({
-      id: "habit1",
-    });
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    for (const [url, init] of fetcher.mock.calls) {
-      expect(url).toBe(`${connection.siteUrl}/api/v1/tasks/habit1/complete`);
-      expect(new Headers(init.headers).get("idempotency-key")).toBe("saved-command-uuid");
-      expect(JSON.parse(init.body)).toEqual({ occurrenceKey: "2026-09-05" });
-    }
-  });
-
-  it("does not retry stale occurrences and never includes server-supplied secrets in errors", async () => {
-    const fetcher = vi.fn(async () =>
-      Response.json(
-        {
-          error: { code: "CONFLICT", message: connection.apiKey },
-          requestId: "12345678-1234-4123-8123-123456789abc",
-        },
-        { status: 409 },
-      ),
+  it("keeps valid request ids, drops untrusted ones and never echoes server messages", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json(
+            {
+              error: { code: "CONFLICT", message: connection.apiKey },
+              requestId: "12345678-1234-4123-8123-123456789abc",
+            },
+            { status: 409 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          Response.json(
+            {
+              error: { code: "__proto__", message: connection.apiKey },
+              requestId: connection.apiKey,
+            },
+            { status: 500 },
+          ),
+        ),
     );
-    vi.stubGlobal("fetch", fetcher);
-    await expect(completeHabit(connection, "habit1", "2026-09-04")).rejects.toMatchObject({
+    const getToken = createTokenProvider(connection);
+    await expect(getToken({ forceRefreshToken: true })).rejects.toMatchObject({
       code: "CONFLICT",
       status: 409,
       requestId: "12345678-1234-4123-8123-123456789abc",
     });
-    expect(fetcher).toHaveBeenCalledTimes(1);
-  });
-
-  it("drops untrusted request identifiers and error codes", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json(
-          {
-            error: { code: "__proto__", message: connection.apiKey },
-            requestId: connection.apiKey,
-          },
-          { status: 500 },
-        ),
-      ),
-    );
     try {
-      await fetchHabitSnapshot(connection);
+      await getToken({ forceRefreshToken: true });
       throw new Error("must reject");
     } catch (error) {
       expect(error).toMatchObject({ code: "HTTP_ERROR", status: 500 });
       expect((error as NativeApiError).requestId).toBeUndefined();
+      expect((error as Error).message).not.toContain(connection.apiKey);
       expect(JSON.stringify(error)).not.toContain(connection.apiKey);
     }
   });

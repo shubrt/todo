@@ -1,8 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import {
-  action,
   internalMutation,
-  internalQuery,
   mutation,
   query,
   type MutationCtx,
@@ -10,9 +8,18 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
+import { apiKeyKind } from "./validators";
 
 export function authError(code: string, message: string): never {
   throw new ConvexError({ code, message });
+}
+
+/**
+ * Not revoked and not expired. Keys from the first version expired without a scheduled
+ * revocation, so revokedAt alone is not enough.
+ */
+function isActiveKey(key: Doc<"apiKeys">, now: number) {
+  return key.revokedAt === undefined && (key.expiresAt === undefined || key.expiresAt > now);
 }
 
 function checkApiKey(key: Doc<"apiKeys"> | null): Doc<"apiKeys"> {
@@ -20,8 +27,7 @@ function checkApiKey(key: Doc<"apiKeys"> | null): Doc<"apiKeys"> {
     !key ||
     !process.env.TODO_OWNER_ID ||
     key.ownerId !== process.env.TODO_OWNER_ID ||
-    key.revokedAt !== undefined ||
-    (key.expiresAt !== undefined && key.expiresAt <= Date.now())
+    !isActiveKey(key, Date.now())
   )
     authError("UNAUTHENTICATED", "Der API-Schlüssel ist ungültig oder wurde widerrufen.");
   return key;
@@ -36,49 +42,94 @@ export async function requireApiKeyByHash(ctx: QueryCtx | MutationCtx, tokenHash
   );
 }
 
-/** Key administration requires a browser session, never a device credential. */
-export async function requireSessionOwner(ctx: QueryCtx | MutationCtx): Promise<string> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (
-    !identity ||
-    typeof identity.sid !== "string" ||
-    identity.apiKeyId !== undefined ||
-    !process.env.TODO_OWNER_ID ||
-    identity.subject !== process.env.TODO_OWNER_ID
-  )
-    authError("UNAUTHENTICATED", "Bitte erneut anmelden.");
-  const id = ctx.db.normalizeId("sessions", identity.sid);
-  const session = id ? await ctx.db.get(id) : null;
-  if (
-    !session ||
-    session.ownerId !== identity.subject ||
-    session.revokedAt !== undefined ||
-    session.expiresAt <= Date.now()
-  ) {
-    authError("UNAUTHENTICATED", "Die Sitzung ist abgelaufen oder wurde widerrufen.");
-  }
-  return session.ownerId;
+/** Records key use for the key list, at most hourly so frequent calls do not rewrite the row. */
+export async function touchApiKey(ctx: MutationCtx, key: Doc<"apiKeys">) {
+  const now = Date.now();
+  if (key.lastUsedAt === undefined || now - key.lastUsedAt >= 60 * 60_000)
+    await ctx.db.patch(key._id, { lastUsedAt: now });
 }
 
-/** Read the credential row inside every transaction, including live subscriptions. */
-export async function requireOwner(ctx: QueryCtx | MutationCtx): Promise<string> {
+/**
+ * Only device JWTs (apiKeyId claim from /auth/device-token) authorize. The key row is
+ * reread inside every transaction, so live subscriptions stop right after revocation.
+ * Returns the key behind the caller's JWT.
+ */
+async function requireCallerKey(ctx: QueryCtx | MutationCtx): Promise<Doc<"apiKeys">> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity || !process.env.TODO_OWNER_ID || identity.subject !== process.env.TODO_OWNER_ID)
     authError("UNAUTHENTICATED", "Bitte erneut anmelden.");
-  if (identity.apiKeyId === undefined) return requireSessionOwner(ctx);
   if (typeof identity.apiKeyId !== "string" || identity.sid !== undefined)
     authError("UNAUTHENTICATED", "Ungültige Geräteanmeldung.");
   const id = ctx.db.normalizeId("apiKeys", identity.apiKeyId);
-  const key = checkApiKey(id ? await ctx.db.get(id) : null);
-  return key.ownerId;
+  return checkApiKey(id ? await ctx.db.get(id) : null);
 }
 
-export const activeOwner = internalQuery({ args: {}, handler: requireSessionOwner });
+/** Guard for every public function; see requireCallerKey. */
+export async function requireOwner(ctx: QueryCtx | MutationCtx): Promise<string> {
+  return (await requireCallerKey(ctx)).ownerId;
+}
 
+/**
+ * Active keys (not revoked, not expired), newest first. `current` marks the key of the
+ * calling app. `lastUsedAt` is hour-accurate: token refreshes and API writes record it.
+ */
+export const listApiKeys = query({
+  args: {},
+  handler: async (ctx) => {
+    const caller = await requireCallerKey(ctx);
+    const now = Date.now();
+    const keys = await ctx.db
+      .query("apiKeys")
+      .withIndex("by_owner", (q) => q.eq("ownerId", caller.ownerId))
+      .collect();
+    return keys
+      .filter((key) => isActiveKey(key, now))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map((key) => ({
+        id: key._id,
+        name: key.name,
+        prefix: key.prefix,
+        kind: key.kind ?? null,
+        createdAt: key.createdAt,
+        lastUsedAt: key.lastUsedAt ?? null,
+        current: key._id === caller._id,
+      }));
+  },
+});
+
+/**
+ * Revokes one of the owner's keys. Revoking an already revoked key is a no-op. The calling
+ * app's own key is refused, since that would silently log the app out.
+ */
+export const revokeApiKey = mutation({
+  args: { id: v.id("apiKeys") },
+  handler: async (ctx, { id }) => {
+    const caller = await requireCallerKey(ctx);
+    if (id === caller._id)
+      authError(
+        "INVALID_INPUT",
+        'Das ist der Schlüssel dieser App. Zum Abmelden "Verbindung entfernen" wählen.',
+      );
+    const key = await ctx.db.get(id);
+    if (!key || key.ownerId !== caller.ownerId)
+      authError("NOT_FOUND", "Der Schlüssel wurde nicht gefunden.");
+    if (key.revokedAt === undefined) await ctx.db.patch(id, { revokedAt: Date.now() });
+    return null;
+  },
+});
+
+/**
+ * Backs /auth/device-token. Integration keys never get a Convex JWT: they work only on
+ * /api/v1 (and /auth/device-revoke for themselves), so a leaked tool key cannot list or
+ * revoke other keys. Device keys and legacy keys without kind keep working.
+ */
 export const deviceCredential = internalMutation({
   args: { tokenHash: v.string() },
   handler: async (ctx, { tokenHash }) => {
     const key = await requireApiKeyByHash(ctx, tokenHash);
+    if (key.kind === "integration")
+      authError("FORBIDDEN", "Integrationsschlüssel gelten nur für die API unter /api/v1.");
+    await touchApiKey(ctx, key);
     // Also schedules expiry for keys created before device authentication existed.
     if (key.expiresAt !== undefined && key.expiryScheduledAt !== key.expiresAt) {
       await ctx.scheduler.runAt(key.expiresAt, internal.auth.expireApiKey, { id: key._id });
@@ -102,115 +153,28 @@ export const expireApiKey = internalMutation({
   },
 });
 
-export const getSession = internalQuery({
-  args: { tokenHash: v.string() },
-  handler: async (ctx, { tokenHash }) => {
-    const session = await ctx.db
-      .query("sessions")
-      .withIndex("by_tokenHash", (q) => q.eq("tokenHash", tokenHash))
-      .unique();
-    if (
-      !session ||
-      !process.env.TODO_OWNER_ID ||
-      session.ownerId !== process.env.TODO_OWNER_ID ||
-      session.revokedAt !== undefined ||
-      session.expiresAt <= Date.now()
-    )
-      return null;
-    return { id: session._id, ownerId: session.ownerId, expiresAt: session.expiresAt };
-  },
-});
-
-export const insertSession = internalMutation({
-  args: { tokenHash: v.string(), ownerId: v.string(), expiresAt: v.number() },
-  handler: async (ctx, args) => {
-    const id = await ctx.db.insert("sessions", { ...args, createdAt: Date.now() });
-    await ctx.scheduler.runAt(args.expiresAt, internal.auth.expireSession, { id });
-    return id;
-  },
-});
-
-export const expireSession = internalMutation({
-  args: { id: v.id("sessions") },
-  handler: async (ctx, { id }) => {
-    const session = await ctx.db.get(id);
-    if (session && session.revokedAt === undefined && session.expiresAt <= Date.now())
-      await ctx.db.patch(id, { revokedAt: Date.now() });
-  },
-});
-
-export const revokeSession = internalMutation({
-  args: { tokenHash: v.string() },
-  handler: async (ctx, { tokenHash }) => {
-    const session = await ctx.db
-      .query("sessions")
-      .withIndex("by_tokenHash", (q) => q.eq("tokenHash", tokenHash))
-      .unique();
-    if (session && session.revokedAt === undefined)
-      await ctx.db.patch(session._id, { revokedAt: Date.now() });
-  },
-});
-
-export const listApiKeys = query({
-  args: {},
-  handler: async (ctx) => {
-    const ownerId = await requireSessionOwner(ctx);
-    const keys = await ctx.db
-      .query("apiKeys")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
-      .collect();
-    return keys.map(({ tokenHash: _hash, ...key }) => key);
-  },
-});
-
-export const createApiKey = action({
-  args: { name: v.string(), expiresAt: v.optional(v.number()) },
-  handler: async (ctx, args): Promise<{ id: string; key: string; prefix: string }> =>
-    ctx.runAction(internal.authActions.createKey, args),
-});
-
+/** Stores a key minted by authActions.desktopLogin (hash only) for TODO_OWNER_ID. */
 export const insertApiKey = internalMutation({
-  args: {
-    tokenHash: v.string(),
-    prefix: v.string(),
-    name: v.string(),
-    expiresAt: v.optional(v.number()),
-  },
+  args: { tokenHash: v.string(), prefix: v.string(), name: v.string(), kind: apiKeyKind },
   handler: async (ctx, args) => {
-    const ownerId = await requireSessionOwner(ctx);
-    const name = args.name.trim();
-    if (!name || name.length > 80)
-      authError("INVALID_INPUT", "Der Name muss 1 bis 80 Zeichen lang sein.");
-    if (
-      args.expiresAt !== undefined &&
-      (!Number.isFinite(args.expiresAt) || args.expiresAt <= Date.now())
-    )
-      authError("INVALID_INPUT", "Das Ablaufdatum muss in der Zukunft liegen.");
+    const ownerId = process.env.TODO_OWNER_ID;
+    if (!ownerId) authError("NOT_CONFIGURED", "TODO_OWNER_ID ist nicht gesetzt.");
     const keys = await ctx.db
       .query("apiKeys")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
       .collect();
-    if (keys.filter((key) => key.revokedAt === undefined).length >= 30)
+    const now = Date.now();
+    if (keys.filter((key) => isActiveKey(key, now)).length >= 30)
       authError("INVALID_INPUT", "Es sind höchstens 30 aktive Schlüssel erlaubt.");
-    const id = await ctx.db.insert("apiKeys", {
-      ...args,
-      name,
-      ownerId,
-      createdAt: Date.now(),
-      ...(args.expiresAt !== undefined ? { expiryScheduledAt: args.expiresAt } : {}),
-    });
-    if (args.expiresAt !== undefined)
-      await ctx.scheduler.runAt(args.expiresAt, internal.auth.expireApiKey, { id });
-    return id;
+    return ctx.db.insert("apiKeys", { ...args, ownerId, createdAt: now });
   },
 });
 
-export const revokeApiKey = mutation({
-  args: { id: v.id("apiKeys") },
-  handler: async (ctx, { id }) => {
-    const ownerId = await requireSessionOwner(ctx);
-    const key = await ctx.db.get(id);
-    if (!key || key.ownerId !== ownerId) authError("NOT_FOUND", "Schlüssel nicht gefunden.");
-    if (key.revokedAt === undefined) await ctx.db.patch(id, { revokedAt: Date.now() });
+/** Revokes the presenting key ("Verbindung entfernen"); a second call fails like any revoked key. */
+export const revokeDeviceKey = internalMutation({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, { tokenHash }) => {
+    const key = await requireApiKeyByHash(ctx, tokenHash);
+    await ctx.db.patch(key._id, { revokedAt: Date.now() });
   },
 });

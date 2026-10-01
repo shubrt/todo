@@ -1,12 +1,13 @@
 import { httpRouter } from "convex/server";
 import { ConvexError } from "convex/values";
 import { logEvent } from "@todo/logging";
-import { httpAction } from "./_generated/server";
+import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { publicJwks, sha256 } from "./authCrypto";
 import {
   canonicalJson,
   applicationKey,
+  desktopCallbackLocation,
   errorResponse,
   jsonResponse,
   parseFilters,
@@ -31,91 +32,85 @@ http.route({
   }),
 });
 
-const authHandler = httpAction(async (ctx, request) => {
-  const requestId = crypto.randomUUID();
-  const operation = new URL(request.url).pathname.slice("/auth/".length);
-  try {
-    const body = await readJson(request);
-    let result: unknown;
-    if (operation === "login" || operation === "identity") {
-      if (
-        typeof body.code !== "string" ||
-        typeof body.codeVerifier !== "string" ||
-        typeof body.redirectUri !== "string"
-      )
-        throw new ConvexError({ code: "INVALID_INPUT", message: "Ungültige Logintransaktion." });
-      result = await ctx.runAction(
-        operation === "identity" ? internal.authActions.identity : internal.authActions.login,
-        { code: body.code, codeVerifier: body.codeVerifier, redirectUri: body.redirectUri },
-      );
-    } else {
-      if (typeof body.sessionToken !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(body.sessionToken))
-        throw new ConvexError({ code: "UNAUTHENTICATED", message: "Ungültige Sitzung." });
-      const tokenHash = await sha256(body.sessionToken);
-      if (operation === "token")
-        result = await ctx.runAction(internal.authActions.token, {
-          sessionToken: body.sessionToken,
-        });
-      else if (operation === "logout") {
-        await ctx.runMutation(internal.auth.revokeSession, { tokenHash });
-        result = { authenticated: false };
-      } else if (operation === "session") {
-        const session = await ctx.runQuery(internal.auth.getSession, { tokenHash });
-        if (!session)
-          throw new ConvexError({ code: "UNAUTHENTICATED", message: "Bitte erneut anmelden." });
-        result = { authenticated: true };
-      } else throw new ConvexError({ code: "NOT_FOUND", message: "Nicht gefunden." });
-    }
-    logEvent({ service: "todo-convex", operation: `auth.${operation}`, outcome: "ok", requestId });
-    return jsonResponse(result);
-  } catch (error) {
-    const response = errorResponse(error, requestId);
-    logEvent({
-      service: "todo-convex",
-      operation: `auth.${operation}`,
-      outcome: "error",
-      requestId,
-      errorCode: String(response.status),
-    });
-    return response;
-  }
-});
-for (const path of [
-  "/auth/login",
-  "/auth/identity",
-  "/auth/token",
-  "/auth/session",
-  "/auth/logout",
-])
-  http.route({ path, method: "POST", handler: authHandler });
-
+// Shoo's redirect_uri. It cannot exchange the code (no verifier); it only bounces to the desktop.
 http.route({
-  path: "/auth/device-token",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const requestId = crypto.randomUUID();
-    try {
-      const tokenHash = await sha256(applicationKey(request));
-      const result = await ctx.runAction(internal.authActions.deviceToken, { tokenHash });
-      logEvent({
-        service: "todo-convex",
-        operation: "auth.device-token",
-        outcome: "ok",
-        requestId,
-      });
-      return jsonResponse(result);
-    } catch (error) {
-      const response = errorResponse(error, requestId);
-      logEvent({
-        service: "todo-convex",
-        operation: "auth.device-token",
-        outcome: "error",
-        requestId,
-        errorCode: String(response.status),
-      });
-      return response;
-    }
+  path: "/auth/desktop/callback",
+  method: "GET",
+  handler: httpAction(async (_ctx, request) => {
+    const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+    const location = desktopCallbackLocation(new URL(request.url));
+    if (location) return new Response(null, { status: 302, headers: { ...headers, location } });
+    return new Response(
+      "Ungültige Anmeldeantwort. Bitte die Anmeldung in der Todo-App neu starten.",
+      {
+        status: 400,
+        headers: {
+          ...headers,
+          "content-type": "text/plain; charset=utf-8",
+          "x-content-type-options": "nosniff",
+        },
+      },
+    );
   }),
+});
+
+/** POST JSON auth endpoint with the shared error shape and request logging. */
+function authRoute(path: string, run: (ctx: ActionCtx, request: Request) => Promise<unknown>) {
+  const operation = `auth.${path.slice("/auth/".length)}`;
+  http.route({
+    path,
+    method: "POST",
+    handler: httpAction(async (ctx, request) => {
+      const requestId = crypto.randomUUID();
+      try {
+        const result = await run(ctx, request);
+        logEvent({ service: "todo-convex", operation, outcome: "ok", requestId });
+        return jsonResponse(result);
+      } catch (error) {
+        const response = errorResponse(error, requestId);
+        logEvent({
+          service: "todo-convex",
+          operation,
+          outcome: "error",
+          requestId,
+          errorCode: String(response.status),
+        });
+        return response;
+      }
+    }),
+  });
+}
+
+// Body { code, codeVerifier, deviceName, kind? }. kind "integration" mints a named key for a
+// tool instead of the app's own device key; any other value than the two kinds is rejected.
+authRoute("/auth/desktop-login", async (ctx, request) => {
+  const body = await readJson(request);
+  if (
+    typeof body.code !== "string" ||
+    typeof body.codeVerifier !== "string" ||
+    typeof body.deviceName !== "string" ||
+    (body.kind !== undefined && body.kind !== "device" && body.kind !== "integration")
+  )
+    throw new ConvexError({ code: "INVALID_INPUT", message: "Ungültige Logintransaktion." });
+  return ctx.runAction(internal.authActions.desktopLogin, {
+    code: body.code,
+    codeVerifier: body.codeVerifier,
+    deviceName: body.deviceName,
+    ...(body.kind !== undefined ? { kind: body.kind } : {}),
+  });
+});
+
+authRoute("/auth/device-token", async (ctx, request) =>
+  ctx.runAction(internal.authActions.deviceToken, {
+    tokenHash: await sha256(applicationKey(request)),
+  }),
+);
+
+authRoute("/auth/device-revoke", async (ctx, request) => {
+  await ctx.runMutation(internal.auth.revokeDeviceKey, {
+    tokenHash: await sha256(applicationKey(request)),
+  });
+  return { revoked: true };
 });
 
 const apiHandler = httpAction(async (ctx, request) => {

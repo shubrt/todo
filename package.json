@@ -17,9 +17,9 @@
     "qa": "vp check && vp run sherif && vp run typecheck && vp run test",
     "prepare": "if [ -z \"$CI\" ]; then vp config; fi",
     "commitlint": "commitlint --edit",
-    "dev": "vp run @todo/web#dev",
-    "build": "vp run @todo/web#build",
-    "start": "vp run @todo/web#start",
+    "dev": "vp run @todo/desktop#dev",
+    "build": "vp run @todo/desktop#build",
+    "package": "vp run @todo/desktop#package",
     "codegen": "vp run @todo/backend#codegen",
     "keys:generate": "node scripts/generate-auth-keys.mjs"
   },

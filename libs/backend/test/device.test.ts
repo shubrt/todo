@@ -23,14 +23,6 @@ afterEach(() => {
 
 async function fixture(expiresAt?: number) {
   const t = convexTest(schema, modules);
-  const sessionId = await t.run((ctx) =>
-    ctx.db.insert("sessions", {
-      ownerId,
-      tokenHash: "browser-session",
-      createdAt: Date.now(),
-      expiresAt: Date.now() + 30 * 86_400_000,
-    }),
-  );
   const tokenHash = await sha256(rawKey);
   const keyId = await t.run((ctx) =>
     ctx.db.insert("apiKeys", {
@@ -42,14 +34,7 @@ async function fixture(expiresAt?: number) {
       ...(expiresAt === undefined ? {} : { expiresAt }),
     }),
   );
-  return {
-    t,
-    keyId,
-    tokenHash,
-    sessionId,
-    browser: t.withIdentity({ subject: ownerId, sid: sessionId }),
-    device: t.withIdentity({ subject: ownerId, apiKeyId: keyId }),
-  };
+  return { t, keyId, tokenHash, device: t.withIdentity({ subject: ownerId, apiKeyId: keyId }) };
 }
 
 async function signingKeys() {
@@ -95,7 +80,6 @@ describe("native credential bridge", () => {
     expect(result.expiresAt).toBeLessThanOrEqual(expiry);
     expect(verified.payload.exp! * 1000).toBe(result.expiresAt);
     expect(JSON.stringify(result)).not.toContain(rawKey);
-    expect(await t.run((ctx) => ctx.db.query("sessions").collect())).toHaveLength(1);
     expect((await t.run((ctx) => ctx.db.get(keyId)))?.expiryScheduledAt).toBe(expiry);
   });
 
@@ -117,31 +101,58 @@ describe("native credential bridge", () => {
     expect((await send()).status).toBe(401);
   });
 
-  it("allows task operations, rechecks revoked keys and prevents device key administration", async () => {
-    const { t, device, browser, keyId, sessionId } = await fixture();
+  it("accepts only device JWTs and rechecks the key on every read", async () => {
+    const { t, device, keyId } = await fixture();
     const id = await device.mutation(api.tasks.create, { title: "Native capture" });
-    expect((await browser.query(api.tasks.list, {}))[0]?._id).toBe(id);
-    await expect(device.query(api.auth.listApiKeys, {})).rejects.toThrow(/UNAUTHENTICATED/);
-    await expect(device.action(api.auth.createApiKey, { name: "Persist access" })).rejects.toThrow(
-      /UNAUTHENTICATED/,
-    );
-    await expect(device.mutation(api.auth.revokeApiKey, { id: keyId })).rejects.toThrow(
-      /UNAUTHENTICATED/,
-    );
-    await expect(
-      t
-        .withIdentity({ subject: ownerId, apiKeyId: keyId, sid: sessionId })
-        .query(api.tasks.list, {}),
-    ).rejects.toThrow(/UNAUTHENTICATED/);
-    await expect(
-      t.withIdentity({ subject: "other", apiKeyId: keyId }).query(api.tasks.list, {}),
-    ).rejects.toThrow(/UNAUTHENTICATED/);
-    await browser.mutation(api.auth.revokeApiKey, { id: keyId });
+    for (const identity of [
+      { subject: ownerId, sid: "former-browser-session" },
+      { subject: ownerId, apiKeyId: keyId, sid: "former-browser-session" },
+      { subject: "other", apiKeyId: keyId },
+    ])
+      await expect(t.withIdentity(identity).query(api.tasks.list, {})).rejects.toThrow(
+        /UNAUTHENTICATED/,
+      );
+    await t.run((ctx) => ctx.db.patch(keyId, { revokedAt: Date.now() }));
     await expect(device.query(api.tasks.list, {})).rejects.toThrow(/UNAUTHENTICATED/);
     await expect(device.mutation(api.tasks.complete, { taskId: id })).rejects.toThrow(
       /UNAUTHENTICATED/,
     );
-    expect((await browser.query(api.tasks.list, {}))[0]?.state).toBe("open");
+    expect((await t.run((ctx) => ctx.db.get(id)))?.state).toBe("open");
+  });
+
+  it("revokes exactly the presenting key, which then can no longer get device tokens", async () => {
+    const { t, keyId } = await fixture();
+    await signingKeys();
+    const otherKey = `todo_${"e".repeat(43)}`;
+    await t.run(async (ctx) =>
+      ctx.db.insert("apiKeys", {
+        ownerId,
+        name: "Other Mac",
+        prefix: otherKey.slice(0, 13),
+        tokenHash: await sha256(otherKey),
+        createdAt: Date.now(),
+      }),
+    );
+    const post = (path: string, authorization = headers.authorization) =>
+      t.fetch(path, { method: "POST", headers: { authorization } });
+    const revoked = await post("/auth/device-revoke");
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toEqual({ revoked: true });
+    expect((await t.run((ctx) => ctx.db.get(keyId)))?.revokedAt).toBe(Date.now());
+    expect((await post("/auth/device-token")).status).toBe(401);
+    expect((await post("/auth/device-revoke")).status).toBe(401);
+    expect((await post("/auth/device-revoke", "Bearer invalid")).status).toBe(401);
+    expect((await post("/auth/device-token", `Bearer ${otherKey}`)).status).toBe(200);
+  });
+
+  it("keeps integration keys on /api/v1 and refuses them a Convex JWT", async () => {
+    const { t, keyId } = await fixture();
+    await signingKeys();
+    await t.run((ctx) => ctx.db.patch(keyId, { kind: "integration" }));
+    expect((await t.fetch("/auth/device-token", { method: "POST", headers })).status).toBe(403);
+    expect((await t.fetch("/api/v1/tasks", { headers })).status).toBe(200);
+    await t.run((ctx) => ctx.db.patch(keyId, { kind: "device" }));
+    expect((await t.fetch("/auth/device-token", { method: "POST", headers })).status).toBe(200);
   });
 
   it("schedules expiration for existing device keys and writes revocation when it is due", async () => {
@@ -160,8 +171,8 @@ describe("native credential bridge", () => {
 
 describe("widget habit snapshot", () => {
   it("returns today's progress and makes repeated widget completions idempotent", async () => {
-    const { t, browser } = await fixture();
-    await browser.mutation(api.settings.initializeHabits, {
+    const { t, device } = await fixture();
+    await device.mutation(api.settings.initializeHabits, {
       titles: ["Read", "Walk", "Stretch", "Water", "Plan"],
     });
     const first = await (await t.fetch("/api/v1/habits/snapshot", { headers })).json();
@@ -195,8 +206,8 @@ describe("widget habit snapshot", () => {
   });
 
   it("advances across midnight without a cron tick and rejects the previous habit occurrence", async () => {
-    const { t, browser } = await fixture();
-    await browser.mutation(api.settings.initializeHabits, {
+    const { t, device } = await fixture();
+    await device.mutation(api.settings.initializeHabits, {
       titles: ["Read", "Walk", "Stretch", "Water", "Plan"],
     });
     const old = await (await t.fetch("/api/v1/habits/snapshot", { headers })).json();

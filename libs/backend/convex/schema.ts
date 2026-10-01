@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { area, kind, recurrenceRule, taskList } from "./validators";
+import { apiKeyKind, area, kind, recurrenceRule, taskList } from "./validators";
 
 export default defineSchema({
   tasks: defineTable({
@@ -79,18 +79,13 @@ export default defineSchema({
   })
     .index("by_owner", ["ownerId"])
     .index("by_next_run", ["enabled", "nextRunAt"]),
-  sessions: defineTable({
-    ownerId: v.string(),
-    tokenHash: v.string(),
-    expiresAt: v.number(),
-    createdAt: v.number(),
-    revokedAt: v.optional(v.number()),
-  }).index("by_tokenHash", ["tokenHash"]),
   apiKeys: defineTable({
     ownerId: v.string(),
     name: v.string(),
     prefix: v.string(),
     tokenHash: v.string(),
+    // Absent on keys created before kinds existed.
+    kind: v.optional(apiKeyKind),
     createdAt: v.number(),
     revokedAt: v.optional(v.number()),
     lastUsedAt: v.optional(v.number()),

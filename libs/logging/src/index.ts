@@ -1,5 +1,5 @@
 export type LogEvent = {
-  service: "todo-web" | "todo-convex";
+  service: "todo-convex";
   operation: string;
   outcome: "ok" | "error";
   requestId?: string;
@@ -9,8 +9,8 @@ export type LogEvent = {
   period?: string;
 };
 
-/** Allowlisted scalar fields prevent bodies and credentials entering either adapter. */
-export function eventFields(event: LogEvent): LogEvent {
+/** Allowlisted scalar fields prevent bodies and credentials entering the log output. */
+function eventFields(event: LogEvent): LogEvent {
   return {
     service: event.service,
     operation: event.operation,
@@ -23,7 +23,7 @@ export function eventFields(event: LogEvent): LogEvent {
   };
 }
 
-/** Convex adapter: no Node imports or network transports in queries and mutations. */
+/** Structured console logging for Convex: no Node imports or network transports. */
 export function logEvent(event: LogEvent): void {
   try {
     const message = JSON.stringify(eventFields(event));

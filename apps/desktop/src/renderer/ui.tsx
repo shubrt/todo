@@ -1,14 +1,19 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
+// Modal sheet. Escape, the close button and a click on the backdrop call onClose. Sheets can
+// stack: Escape then closes only the topmost one.
 export function Dialog({
   title,
   children,
   onClose,
+  className = "",
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  /** "top" pins the sheet to the top, for sheets whose height changes (tabs). */
+  className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -19,9 +24,12 @@ export function Dialog({
   return (
     <dialog
       ref={dialog}
-      className="sheet"
+      className={`sheet ${className}`}
       aria-label={title}
-      onCancel={onClose}
+      onCancel={(event) => {
+        // React also hands a nested sheet's cancel to its parents.
+        if (event.target === event.currentTarget) onClose();
+      }}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -57,4 +65,11 @@ export function safeError(
   if (data && typeof data === "object" && "message" in data && typeof data.message === "string")
     return data.message;
   return fallback;
+}
+
+// Electron prefixes errors thrown in IPC handlers; the rest is the main process's German message.
+export function ipcErrorMessage(cause: unknown, fallback: string) {
+  const message = cause instanceof Error ? cause.message : "";
+  const match = /^Error invoking remote method '[^']*': (?:\w*Error: )?([\s\S]+)$/.exec(message);
+  return match?.[1] ?? fallback;
 }

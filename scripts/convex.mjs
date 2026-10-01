@@ -32,28 +32,19 @@ const targetFlags = new Set([
   "--configure",
 ]);
 
-export function validateTarget(web, key) {
-  let cloud;
+// The root .env holds only the site URL; the cloud URL of the same deployment
+// and region is derived from it.
+export function validateTarget(env, key) {
   let site;
   try {
-    cloud = new URL(web.VITE_CONVEX_URL);
-    site = new URL(web.CONVEX_SITE_URL);
+    site = new URL(env.CONVEX_SITE_URL);
   } catch {
-    throw new Error("VITE_CONVEX_URL und CONVEX_SITE_URL fehlen oder sind ungültig.");
+    throw new Error("CONVEX_SITE_URL fehlt oder ist ungültig.");
   }
-  const host = /^([a-z0-9-]+)(\.[a-z0-9-]+)?\.convex\.cloud$/.exec(cloud.hostname);
-  if (
-    !host ||
-    cloud.protocol !== "https:" ||
-    site.protocol !== "https:" ||
-    cloud.origin !== web.VITE_CONVEX_URL ||
-    site.origin !== web.CONVEX_SITE_URL ||
-    cloud.port ||
-    site.port ||
-    site.hostname !== cloud.hostname.replace(/\.cloud$/, ".site")
-  ) {
+  const host = /^([a-z0-9-]+)(\.[a-z0-9-]+)?\.convex\.site$/.exec(site.hostname);
+  if (!host || site.protocol !== "https:" || site.port || site.origin !== env.CONVEX_SITE_URL) {
     throw new Error(
-      "Cloud- und Site-URL müssen dasselbe Convex-Deployment samt Region bezeichnen, ohne Port, Zugangsdaten, Pfad oder URL-Zusätze.",
+      "CONVEX_SITE_URL muss die HTTPS-Site-URL eines Convex-Deployments sein, ohne Port, Zugangsdaten, Pfad oder URL-Zusätze.",
     );
   }
   const prefixed = /^prod:([a-z0-9-]+)\|([^\s|]+)$/.exec(key ?? "");
@@ -63,7 +54,7 @@ export function validateTarget(web, key) {
       "CONVEX_DEPLOY_KEY muss ein direkter Admin-Schlüssel oder ein prod:-Schlüssel des ausgewählten Deployments sein.",
     );
   }
-  return { cloudUrl: cloud.origin, siteUrl: site.origin, deploymentName: host[1], key };
+  return { cloudUrl: `https://${site.hostname.replace(/\.site$/, ".cloud")}`, key };
 }
 
 export function deploymentEnvironment(source, target) {
@@ -179,11 +170,11 @@ export async function main(args = process.argv.slice(2)) {
     args[0] === "help" || options.some((arg) => ["--help", "-h", "--version", "-V"].includes(arg));
   if (help) return runCli(args, undefined, []);
 
-  const web = readConfiguration(".env");
+  const env = readConfiguration(".env");
   const key = readConfiguration(".env.convex-target").CONVEX_DEPLOY_KEY;
-  const target = validateTarget(web, key);
+  const target = validateTarget(env, key);
   // Do not accept a credential in positional arguments or --option=value.
-  const secrets = [key, key.includes("|") ? key.split("|")[1] : undefined, web.AUTH_COOKIE_SECRET];
+  const secrets = [key, key.includes("|") ? key.split("|")[1] : undefined];
   if (args.some((arg) => secrets.some((secret) => secret && arg.includes(secret)))) {
     throw new Error(
       "Zugangsdaten dürfen nicht als CLI-Argument übergeben werden. Bitte --from-file verwenden.",

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   isTrustedRenderer,
-  validateConnectionInput,
+  validateClipboardText,
+  validateKeyName,
   validateTokenOptions,
 } from "../src/main/security";
 import { loadPreferences, restoreBounds, validatePreferences } from "../src/main/window-state";
@@ -23,20 +24,28 @@ describe("Desktop-Grenzen", () => {
     );
   });
 
-  it("weist unbekannte IPC-Argumente und übergroße Verbindungen zurück", () => {
+  it("weist unbekannte IPC-Argumente zurück", () => {
     expect(() => validateTokenOptions({ forceRefreshToken: true, session: "private" })).toThrow();
     expect(() => validateTokenOptions({ forceRefreshToken: "yes" })).toThrow();
     expect(validateTokenOptions({ forceRefreshToken: false })).toEqual({
       forceRefreshToken: false,
     });
-    expect(() => validateConnectionInput("a".repeat(8193))).toThrow();
-    expect(() => validateConnectionInput({ siteUrl: "https://example.com" })).toThrow();
     expect(() => validatePreferences({ ownerId: "somebody" })).toThrow();
     expect(() => validatePreferences({ alwaysOnTop: "true" })).toThrow();
     expect(() => validatePreferences({ shortcut: "Space" })).toThrow();
     expect(
       validatePreferences({ shortcut: "CommandOrControl+Shift+Space", tint: "forest" }),
     ).toEqual({ shortcut: "CommandOrControl+Shift+Space", tint: "forest" });
+  });
+
+  it("prüft Schlüsselnamen und Text für die Zwischenablage", () => {
+    expect(validateKeyName("  task-capture  ")).toBe("task-capture");
+    expect(validateKeyName("x".repeat(80))).toHaveLength(80);
+    for (const name of ["", "   ", "x".repeat(81), 42, null, { name: "x" }])
+      expect(() => validateKeyName(name)).toThrow();
+    expect(validateClipboardText(" todo_abc ")).toBe(" todo_abc ");
+    for (const text of ["", "x".repeat(4097), 1, ["todo_abc"]])
+      expect(() => validateClipboardText(text)).toThrow();
   });
 
   it("holt ein Fenster von einem entfernten Monitor vollständig zurück", () => {

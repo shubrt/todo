@@ -1,12 +1,23 @@
 import { createContext, useContext } from "react";
 import type { Doc } from "@todo/backend/dataModel";
 
-export type Area = "me" | "agency" | "work";
+export const areas = ["me", "agency", "work"] as const;
+export type Area = (typeof areas)[number];
+export const areaSymbols: Record<Area, string> = { me: "◌", agency: "❋", work: "▧" };
 export type Task = Doc<"tasks"> & { isDue: boolean; isOverdue: boolean; isDeferred: boolean };
 export type Actions = {
   connected: boolean;
   pending: Set<string>;
-  run: (key: string, action: () => Promise<unknown>, message?: string) => Promise<boolean>;
+  /**
+   * Runs a write once per key while connected. Errors go to the workspace toast, or to
+   * `onError` where the toast would be hidden (e.g. behind a sheet).
+   */
+  run: (
+    key: string,
+    action: () => Promise<unknown>,
+    message?: string,
+    onError?: (message: string) => void,
+  ) => Promise<boolean>;
   complete: (task: Task) => void;
   reorder: (siblings: Task[], task: Task, direction: -1 | 1) => void;
   edit: (task: Task) => void;

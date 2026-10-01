@@ -145,6 +145,27 @@ export function routeCommand(method: string, path: string, body: Record<string, 
   return parsed.data;
 }
 
+/**
+ * Shoo redirects the browser to the stable site callback; this computes where to bounce it:
+ * the desktop loopback listener whose port leads the state ("<port>.<43 base64url>").
+ * Only code, state and error are forwarded. Returns null for a malformed state or port.
+ */
+export function desktopCallbackLocation(url: URL): string | null {
+  const match = url.searchParams.get("state")?.match(/^(\d{4,5})\.[A-Za-z0-9_-]{43}$/);
+  const port = Number(match?.[1]);
+  if (!match || port < 1024 || port > 65535) return null;
+  const target = new URL(`http://127.0.0.1:${port}/callback`);
+  for (const [name, max] of [
+    ["code", 4096],
+    ["state", 64],
+    ["error", 200],
+  ] as const) {
+    const value = url.searchParams.get(name);
+    if (value !== null) target.searchParams.set(name, value.slice(0, max));
+  }
+  return target.href;
+}
+
 export function errorResponse(error: unknown, requestId: string): Response {
   let data: unknown = error instanceof ConvexError ? error.data : null;
   if (typeof data === "string") {

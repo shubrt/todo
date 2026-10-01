@@ -1,10 +1,16 @@
 # HTTP-API
 
 Die API liegt auf der Convex-HTTP-Origin:
-`https://YOUR_DEPLOYMENT.convex.site/api/v1`. Sie verwendet einen in den
-Web-Einstellungen erzeugten Anwendungsschlüssel. Ein Convex-Deployment-Key ist
-dafür ungeeignet. Alle Anfragen erhalten eine Request-ID; Fehler enthalten
-keine internen Stacktraces.
+`https://YOUR_DEPLOYMENT.convex.site/api/v1`. Sie erwartet einen
+Anwendungsschlüssel `todo_…` als Bearer-Token. Integrationen wie der
+Capture-Skill bekommen einen Integrationsschlüssel aus der Desktop-App:
+Einstellungen > Schlüssel > Neuer Integrationsschlüssel. Die App verlangt
+dafür eine erneute Shoo-Anmeldung, zeigt den Schlüssel genau einmal und
+widerruft ihn in derselben Liste. Integrationsschlüssel gelten nur unter
+`/api/v1`. Geräteschlüssel und ältere Schlüssel ohne Typ funktionieren hier
+ebenfalls. Ein Convex-Deployment-Key ist ungeeignet. Den Ablauf beschreibt
+[die Desktop-Dokumentation](desktop.md#schlüssel). Alle Anfragen erhalten eine
+Request-ID; Fehler enthalten keine internen Stacktraces.
 
 ```http
 Authorization: Bearer todo_<application-key>
@@ -43,6 +49,7 @@ Die vollständigen Schemas stehen in
 | `POST /tasks/:id/snooze`            | `snoozedUntil` als UTC-Unixzeit in Millisekunden; `null` beendet Snooze                                               |
 | `POST /tasks/:id/normalize-urgency` | `{}`; entfernt aktuelle Frist, Planung und hohe Priorität                                                             |
 | `GET /completions`                  | `date` oder `from`/`to`, optional `area`, `limit`, `cursor`                                                           |
+| `GET /habits/snapshot`              | Keine Filter; heutige Haupt-Habits mit `occurrenceKey`                                                                |
 
 `area` ist `me`, `agency` oder `work`; `list` ist `active` oder `backlog`.
 `view` ist `all`, `area`, `priority` oder `habits`. Die externe Bestandssuche
@@ -92,10 +99,18 @@ ID kann den heutigen Habit nicht erledigen. Der optionale `occurrenceKey`
 prüft zusätzlich die erwartete Kalenderperiode. Ein bereits bestätigter
 Abschluss erzeugt auch bei Wiederholung kein zweites Erledigungsereignis.
 
+`GET /habits/snapshot` verarbeitet einen fälligen Tageswechsel vor dem Lesen,
+auch wenn der Minutencron noch nicht gelaufen ist. `data` enthält
+`generatedAt`, `localDate`, `timeZone`, `nextResetAt`, `completedCount`,
+`totalCount` und `habits` mit `id`, `title`, `completed` und `occurrenceKey`.
+`nextResetAt` berücksichtigt Owner-Zeitzone und Sommerzeit. Nach diesem
+Zeitpunkt gelten die IDs nicht mehr für den neuen Tag.
+
 ## Beispiele
 
 Die folgenden Variablen werden lokal gesetzt. Schlüssel nicht in gemeinsam
-genutzte Shellskripte schreiben. `TODO_API_KEY` bezeichnet einen Anwendungsschlüssel.
+genutzte Shellskripte schreiben. `TODO_API_KEY` ist ein Integrationsschlüssel
+aus Einstellungen > Schlüssel.
 
 ```sh
 export TODO_API_URL='https://YOUR_DEPLOYMENT.convex.site/api/v1'
@@ -150,16 +165,17 @@ Archivierung verändert diese Angaben nicht. Habits sind am `kind` erkennbar.
 }
 ```
 
-| HTTP | Code                | Bedeutung                                                           |
-| ---- | ------------------- | ------------------------------------------------------------------- |
-| 400  | `INVALID_INPUT`     | Ungültige Felder, Filter, Cursor oder fehlender Idempotenzschlüssel |
-| 401  | `UNAUTHENTICATED`   | Schlüssel oder Sitzung fehlt, ist widerrufen oder abgelaufen        |
-| 403  | `FORBIDDEN`         | Identität oder Origin ist nicht zugelassen                          |
-| 404  | `NOT_FOUND`         | Aufgabe oder Operation fehlt                                        |
-| 409  | `CONFLICT`          | Veralteter Zustand oder abweichender Inhalt beim Retry              |
-| 413  | `PAYLOAD_TOO_LARGE` | Body überschreitet 32 KiB                                           |
-| 503  | `NOT_CONFIGURED`    | Erforderliche Auth-Konfiguration fehlt                              |
-| 500  | `INTERNAL_ERROR`    | Interner Fehler; Request-ID für die Diagnose verwenden              |
+| HTTP | Code                | Bedeutung                                                                       |
+| ---- | ------------------- | ------------------------------------------------------------------------------- |
+| 400  | `INVALID_INPUT`     | Ungültige Felder, Filter, Cursor oder fehlender Idempotenzschlüssel             |
+| 401  | `UNAUTHENTICATED`   | Schlüssel oder Token fehlt, ist widerrufen oder abgelaufen                      |
+| 403  | `FORBIDDEN`         | Shoo-Identität ohne Besitzer oder Integrationsschlüssel an `/auth/device-token` |
+| 404  | `NOT_FOUND`         | Aufgabe oder Operation fehlt                                                    |
+| 409  | `CONFLICT`          | Veralteter Zustand oder abweichender Inhalt beim Retry                          |
+| 413  | `PAYLOAD_TOO_LARGE` | Body überschreitet 32 KiB                                                       |
+| 503  | `NOT_CONFIGURED`    | Erforderliche Auth-Konfiguration fehlt                                          |
+| 500  | `INTERNAL_ERROR`    | Interner Fehler; Request-ID für die Diagnose verwenden                          |
 
-Ein normaler HTTP-Aufruf liefert eine Antwort. Live-Updates entstehen über
-die Convex-Abonnements geöffneter interaktiver Clients.
+Ein normaler HTTP-Aufruf liefert eine Antwort. Live-Updates bekommt nur die
+geöffnete Desktop-App über ihre Convex-Abonnements. Die Anmelde- und
+Geräteendpunkte unter `/auth` beschreibt [die Desktop-Dokumentation](desktop.md#endpunkte-der-app).

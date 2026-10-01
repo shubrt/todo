@@ -14,7 +14,7 @@ import {
   processOwnerDay,
   readSettings,
 } from "./domain";
-import { requireApiKeyByHash } from "./auth";
+import { requireApiKeyByHash, touchApiKey } from "./auth";
 import { addDays, localDate, startOfDate } from "./time";
 
 export const read = internalQuery({
@@ -53,11 +53,12 @@ export const read = internalQuery({
   },
 });
 
-/** Bring scheduled day transitions up to date before exposing a widget snapshot. */
+/** Bring scheduled day transitions up to date before exposing the habit snapshot. */
 export const habitSnapshot = internalMutation({
   args: { tokenHash: v.string() },
   handler: async (ctx, { tokenHash }): Promise<HabitSnapshot> => {
     const key = await requireApiKeyByHash(ctx, tokenHash);
+    await touchApiKey(ctx, key);
     await processOwnerDay(ctx, key.ownerId);
     const settings = await readSettings(ctx, key.ownerId);
     const generatedAt = Date.now();
@@ -125,7 +126,7 @@ export const write = internalMutation({
       createdAt: Date.now(),
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
     });
-    await ctx.db.patch(key._id, { lastUsedAt: Date.now() });
+    await touchApiKey(ctx, key);
     return result ?? null;
   },
 });

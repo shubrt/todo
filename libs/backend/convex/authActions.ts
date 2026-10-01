@@ -6,15 +6,14 @@ import { ConvexError, v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import {
-  allowedOrigins,
   ownerForClaims,
   publicJwks,
-  SESSION_DURATION,
   sha256,
   SHOO_ISSUER,
   TOKEN_DURATION,
   verifyShooToken,
 } from "./authCrypto";
+import { apiKeyKind } from "./validators";
 
 function fail(code: string, message: string): never {
   throw new ConvexError({ code, message });
@@ -51,33 +50,55 @@ async function signOwnerToken(
   return { token, expiresAt };
 }
 
-export const identity = internalAction({
-  args: { code: v.string(), codeVerifier: v.string(), redirectUri: v.string() },
-  handler: async (_ctx, args): Promise<{ origin: string; subject: string }> => {
-    let redirect: URL;
-    try {
-      redirect = new URL(args.redirectUri);
-    } catch {
-      fail("INVALID_INPUT", "Ungültige Login-Adresse.");
-    }
-    if (
-      !allowedOrigins().includes(redirect.origin) ||
-      args.redirectUri !== `${redirect.origin}/api/auth/callback`
-    )
-      fail("FORBIDDEN", "Diese Login-Adresse ist nicht freigegeben.");
+export const deviceToken = internalAction({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, { tokenHash }): Promise<{ token: string; expiresAt: number }> => {
+    const credential = await ctx.runMutation(internal.auth.deviceCredential, { tokenHash });
+    return signOwnerToken(credential.ownerId, { apiKeyId: credential.id }, credential.expiresAt);
+  },
+});
+
+/**
+ * Desktop login: exchanges the Shoo code with the PKCE verifier that never left the device,
+ * maps the verified subject to the owner and mints a key named `deviceName`.
+ * kind "device" (default) is the app's own key; "integration" is a key the app creates for a
+ * tool after a fresh Shoo login, so a stolen device key alone cannot mint durable keys.
+ * redirect_uri is the stable Convex site callback, so client_id and Shoo's pairwise sub stay fixed.
+ */
+export const desktopLogin = internalAction({
+  args: {
+    code: v.string(),
+    codeVerifier: v.string(),
+    deviceName: v.string(),
+    kind: v.optional(apiKeyKind),
+  },
+  handler: async (ctx, args): Promise<{ id: string; key: string; prefix: string }> => {
+    const kind = args.kind ?? "device";
+    const name = args.deviceName.trim();
+    if (!name || name.length > 80)
+      fail(
+        "INVALID_INPUT",
+        `Der ${kind === "integration" ? "Schlüsselname" : "Gerätename"} muss 1 bis 80 Zeichen lang sein.`,
+      );
     if (
       !/^[A-Za-z0-9._~-]{43,128}$/.test(args.codeVerifier) ||
       args.code.length > 4096 ||
       !args.code
     )
       fail("INVALID_INPUT", "Ungültige Logintransaktion.");
+    let origin: string;
+    try {
+      origin = new URL(process.env.CONVEX_SITE_URL ?? "").origin;
+    } catch {
+      fail("NOT_CONFIGURED", "CONVEX_SITE_URL ist nicht gesetzt.");
+    }
     const response = await fetch(`${SHOO_ISSUER}/token`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "authorization_code",
-        client_id: `origin:${redirect.origin}`,
-        redirect_uri: args.redirectUri,
+        client_id: `origin:${origin}`,
+        redirect_uri: `${origin}/auth/desktop/callback`,
         code: args.code,
         code_verifier: args.codeVerifier,
       }),
@@ -87,57 +108,14 @@ export const identity = internalAction({
     const result = (await response.json()) as { id_token?: unknown };
     if (typeof result.id_token !== "string")
       fail("UNAUTHENTICATED", "Shoo hat keinen gültigen Identitätsnachweis geliefert.");
-    const claims = await verifyShooToken(result.id_token, redirect.origin);
-    return { origin: redirect.origin, subject: claims.sub! };
-  },
-});
-
-export const login = internalAction({
-  args: { code: v.string(), codeVerifier: v.string(), redirectUri: v.string() },
-  handler: async (ctx, args): Promise<{ sessionToken: string; expiresAt: number }> => {
-    const verified = await ctx.runAction(internal.authActions.identity, args);
-    const ownerId = ownerForClaims({ sub: verified.subject }, verified.origin);
-    const sessionToken = randomBytes(32).toString("base64url");
-    const expiresAt = Date.now() + SESSION_DURATION;
-    await ctx.runMutation(internal.auth.insertSession, {
-      tokenHash: await sha256(sessionToken),
-      ownerId,
-      expiresAt,
-    });
-    return { sessionToken, expiresAt };
-  },
-});
-
-export const token = internalAction({
-  args: { sessionToken: v.string() },
-  handler: async (ctx, { sessionToken }): Promise<{ token: string; expiresAt: number }> => {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(sessionToken)) fail("UNAUTHENTICATED", "Ungültige Sitzung.");
-    const session = await ctx.runQuery(internal.auth.getSession, {
-      tokenHash: await sha256(sessionToken),
-    });
-    if (!session) fail("UNAUTHENTICATED", "Bitte erneut anmelden.");
-    return signOwnerToken(session.ownerId, { sid: session.id }, session.expiresAt);
-  },
-});
-
-export const deviceToken = internalAction({
-  args: { tokenHash: v.string() },
-  handler: async (ctx, { tokenHash }): Promise<{ token: string; expiresAt: number }> => {
-    const credential = await ctx.runMutation(internal.auth.deviceCredential, { tokenHash });
-    return signOwnerToken(credential.ownerId, { apiKeyId: credential.id }, credential.expiresAt);
-  },
-});
-
-export const createKey = internalAction({
-  args: { name: v.string(), expiresAt: v.optional(v.number()) },
-  handler: async (ctx, args): Promise<{ id: string; key: string; prefix: string }> => {
-    await ctx.runQuery(internal.auth.activeOwner, {});
+    ownerForClaims(await verifyShooToken(result.id_token, origin), origin);
     const key = `todo_${randomBytes(32).toString("base64url")}`;
     const prefix = key.slice(0, 13);
     const id = await ctx.runMutation(internal.auth.insertApiKey, {
-      ...args,
       tokenHash: await sha256(key),
       prefix,
+      name,
+      kind,
     });
     return { id, key, prefix };
   },
