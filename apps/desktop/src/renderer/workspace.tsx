@@ -88,6 +88,7 @@ function AppFrame() {
         </button>
         <span className="window-title">
           {selected.symbol} <span>{selected.label}</span>
+          {state?.variant && <span className="window-variant">{state.variant}</span>}
         </span>
         <div className="titlebar-actions">
           <button
