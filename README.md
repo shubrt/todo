@@ -51,6 +51,12 @@ vp run @todo/mobile#build
 vp run @todo/mobile#prebuild
 ```
 
+Desktop-`dev` startet pro Worktree eine eigene Variante mit dem Branchnamen,
+etwa `todo habit-widgets` mit `✓ habit-widgets` im Tray. Jede Variante hat
+eigene Daten und keinen globalen Kurzbefehl und beendet sich mit dem
+Dev-Befehl. `TODO_DESKTOP_VARIANT=<name>` überschreibt den Namen und erzeugt
+bei `package` eine getrennte App neben der normalen.
+
 Das macOS-Paket entsteht unter `apps/desktop/release/`. Der mobile `build`
 erzeugt die JavaScript-Bundles; Installation mit Widgets erfordert zusätzlich
 einen nativen Build. In den Web-Einstellungen einen eigenen Schlüssel pro

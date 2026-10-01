@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 export const desktopDirectory = dirname(dirname(fileURLToPath(import.meta.url)));
-export async function buildMain() {
+// `variant` is compiled into the main process as __TODO_VARIANT__ ("" for the regular app).
+export async function buildMain(variant = "") {
+  const define = { __TODO_VARIANT__: JSON.stringify(variant) };
   await Promise.all([
     build({
       absWorkingDir: desktopDirectory,
@@ -16,6 +18,7 @@ export async function buildMain() {
       target: "node24",
       external: ["electron"],
       sourcemap: true,
+      define,
     }),
     build({
       absWorkingDir: desktopDirectory,
@@ -30,8 +33,8 @@ export async function buildMain() {
     }),
   ]);
 }
-export async function buildDesktop() {
-  await buildMain();
+export async function buildDesktop(variant) {
+  await buildMain(variant);
   await buildRenderer({
     configFile: join(desktopDirectory, "vite.config.ts"),
     root: join(desktopDirectory, "src/renderer"),

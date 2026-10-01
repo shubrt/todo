@@ -31,6 +31,11 @@ import {
   type Bounds,
 } from "./window-state";
 
+declare const __TODO_VARIANT__: string;
+
+// Dev runs and branch packages are variants with their own name, data directory, and instance lock.
+const variant = __TODO_VARIANT__ || undefined;
+const appName = variant ? `todo ${variant}` : "todo";
 const directory = dirname(fileURLToPath(import.meta.url));
 const rendererFile = join(directory, "renderer", "index.html");
 const developmentUrl = !app.isPackaged ? process.env.TODO_DESKTOP_DEV_URL : undefined;
@@ -47,7 +52,15 @@ let quitting = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let connecting = false;
 
-app.setName("todo");
+app.setName(appName);
+if (variant) app.setPath("userData", join(app.getPath("appData"), `todo-${variant}`));
+// The dev script owns this process. Quit when it goes away, even after a hard kill.
+if (developmentUrl) {
+  const parent = process.ppid;
+  setInterval(() => {
+    if (process.ppid !== parent) app.quit();
+  }, 1000).unref();
+}
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on("second-instance", () => showWindow());
@@ -71,6 +84,7 @@ else {
 function publicState(): PublicDesktopState {
   return {
     configured: connection !== null,
+    ...(variant ? { variant } : {}),
     ...(connection
       ? { siteUrl: connection.siteUrl, cloudUrl: cloudUrlFromSite(connection.siteUrl) }
       : {}),
@@ -137,7 +151,7 @@ async function start() {
     minHeight: 360,
     maxWidth: 900,
     type: process.platform === "darwin" ? "panel" : undefined,
-    title: "todo",
+    title: appName,
     frame: false,
     roundedCorners: true,
     resizable: true,
@@ -194,12 +208,13 @@ async function start() {
       );
   });
   applyWindowPreferences();
-  if (!globalShortcut.register(preferences.shortcut, toggleWindow))
+  // Variants skip the startup shortcut so they never take it from the regular app.
+  if (!variant && !globalShortcut.register(preferences.shortcut, toggleWindow))
     stateError =
       "Der globale Kurzbefehl ist bereits belegt. Wähle in den Fenstereinstellungen einen anderen.";
   tray = new Tray(nativeImage.createEmpty());
-  tray.setTitle("✓");
-  tray.setToolTip("todo · Deine Aufgaben im Blick");
+  tray.setTitle(variant ? `✓ ${variant}` : "✓");
+  tray.setToolTip(`${appName} · Deine Aufgaben im Blick`);
   tray.on("click", toggleWindow);
   updateMenu();
   registerIpc();
@@ -356,12 +371,12 @@ function updateMenu() {
       },
       { type: "separator" },
       { label: "Ausblenden", click: () => window?.hide() },
-      { label: "todo beenden", accelerator: "CommandOrControl+Q", click: () => app.quit() },
+      { label: `${appName} beenden`, accelerator: "CommandOrControl+Q", click: () => app.quit() },
     ]),
   );
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      { label: "todo", submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }] },
+      { label: appName, submenu: [{ role: "about" }, { type: "separator" }, { role: "quit" }] },
       {
         label: "Bearbeiten",
         submenu: [

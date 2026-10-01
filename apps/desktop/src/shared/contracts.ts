@@ -8,6 +8,8 @@ export type DesktopPreferences = {
 };
 export type PublicDesktopState = {
   configured: boolean;
+  /** Set for dev runs and branch packages, shown in the title bar. */
+  variant?: string;
   cloudUrl?: string;
   siteUrl?: string;
   error?: string;

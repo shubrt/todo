@@ -138,6 +138,9 @@ svg {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.window-variant {
+  color: var(--accent);
+}
 .titlebar-actions {
   display: flex;
   align-items: center;
