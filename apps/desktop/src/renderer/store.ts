@@ -49,6 +49,10 @@ type AppState = {
   current: ListRef;
   /** Id of the selected Selectable. */
   selection: string | null;
+  /** The selection was made by opening a list, not by the user (it does not clear the inbox). */
+  autoSelected: boolean;
+  /** Select the first row as soon as the opened list publishes its rows. */
+  focusOnLoad: boolean;
   items: Selectable[];
   editing: Editing | null;
   /** Panel stack; the last entry is the visible one. */
@@ -59,7 +63,7 @@ type AppState = {
   sections: Record<string, Record<string, boolean>>;
   toast: { id: number; message: string } | null;
 
-  /** Opens a list and drops selection, editing and panels. */
+  /** Opens a list, drops editing and panels, and selects its first row once it is shown. */
   open: (ref: ListRef) => void;
   select: (id: string | null) => void;
   /** Moves the selection by `step` rows; starts at the first or last row. */
@@ -93,6 +97,8 @@ export const useApp = create<AppState>()(
     (set, get) => ({
       current: { kind: "important" },
       selection: null,
+      autoSelected: false,
+      focusOnLoad: true,
       items: [],
       editing: null,
       panels: [],
@@ -100,8 +106,17 @@ export const useApp = create<AppState>()(
       sections: {},
       toast: null,
 
-      open: (current) => set({ current, selection: null, editing: null, panels: [], items: [] }),
-      select: (selection) => set({ selection }),
+      open: (current) =>
+        set({
+          current,
+          selection: null,
+          autoSelected: false,
+          focusOnLoad: true,
+          editing: null,
+          panels: [],
+          items: [],
+        }),
+      select: (selection) => set({ selection, autoSelected: false, focusOnLoad: false }),
       moveSelection: (step) => {
         const { items, selection } = get();
         if (!items.length) return;
@@ -112,10 +127,16 @@ export const useApp = create<AppState>()(
               ? 0
               : items.length - 1
             : Math.max(0, Math.min(items.length - 1, index + step));
-        set({ selection: items[next]!.id });
+        set({ selection: items[next]!.id, autoSelected: false, focusOnLoad: false });
       },
       setItems: (items) => {
-        const { items: previous, selection } = get();
+        const { items: previous, selection, focusOnLoad } = get();
+        // A freshly opened list starts on its first task, an empty one on its first section.
+        if (focusOnLoad && items.length) {
+          const first = items.find((item) => item.type === "task") ?? items[0]!;
+          set({ items, selection: first.id, autoSelected: true, focusOnLoad: false });
+          return;
+        }
         const index = previous.findIndex((item) => item.id === selection);
         // A selection that was not shown before either (a task just created) waits for its row.
         if (index < 0 || items.some((item) => item.id === selection)) {

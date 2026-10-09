@@ -191,6 +191,8 @@ export function TaskRow({
     (state) => state.editing?.type === "rename" && state.editing.id === task._id,
   );
   const expanded = useApp((state) => Boolean(state.expanded[task._id]));
+  // The inbox dot stays while the row is only selected because its list just opened.
+  const seen = useApp((state) => selected && !state.autoSelected);
   const actions = useTaskActions();
   const done = task.state === "done";
   const select = () => useApp.getState().select(task._id);
@@ -213,7 +215,7 @@ export function TaskRow({
         useApp.getState().openPanel({ type: "actions", taskId: task._id });
       }}
     >
-      {task.isInbox && !selected && <i className="inb" />}
+      {task.isInbox && !seen && <i className="inb" />}
       <button
         className="cb"
         role="checkbox"

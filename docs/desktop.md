@@ -156,7 +156,9 @@ Jede Aufgabe ist eine Zeile mit Checkbox in der Listenfarbe und Titel. Rechts fo
 
 Tage stehen relativ da: heute, morgen und innerhalb der nächsten sechs Tage der Wochentag wie `Mo.`, bei überfälligen Fristen auch gestern oder ein vergangener Wochentag, sonst ein Datum wie `16. Okt.`. Erledigte Zeilen sind durchgestrichen und zeigen keine Details.
 
-Ein blauer Punkt am linken Rand markiert eine Aufgabe aus der Inbox, also eine über die API erfasste. Sobald die Zeile mit Tastatur oder Maus ausgewählt wird, entfernt die App die Markierung im Backend. Die Position bleibt dabei gleich. Ohne Verbindung bleibt der Punkt, bis die Zeile wieder ausgewählt wird.
+Beim Öffnen einer Liste ist die oberste Aufgabe markiert, in einer leeren Liste der Abschnitt Tasks. Die Pfeiltasten arbeiten also sofort.
+
+Ein blauer Punkt am linken Rand markiert eine Aufgabe aus der Inbox, also eine über die API erfasste. Sobald die Zeile mit Tastatur oder Maus ausgewählt wird, entfernt die App die Markierung im Backend. Die automatische Markierung beim Öffnen einer Liste zählt dabei nicht. Die Position bleibt dabei gleich. Ohne Verbindung bleibt der Punkt, bis die Zeile wieder ausgewählt wird.
 
 Subtasks stehen eingerückt unter ihrer Aufgabe, eine Ebene tief. Sie bleiben zugeklappt, bis `→` oder ein Klick auf die Subtask-Zahl sie zeigt. Eine erledigte Subtask erledigt den Parent nicht, und ein erledigter Parent darf offene Subtasks haben.
 

@@ -519,6 +519,9 @@ beforeEach(() => {
   useApp.setState({
     current: { id: listIds.work },
     selection: null,
+    // Tests start without a selection; opening another list selects its first row.
+    autoSelected: false,
+    focusOnLoad: false,
     items: [],
     editing: null,
     panels: [],
@@ -986,6 +989,38 @@ describe("Normale Liste", () => {
     expect($(".subs")).toBeNull();
     await press("down");
     expect(app().selection).toBe("release");
+  });
+
+  it("wählt beim Öffnen einer Liste die oberste Aufgabe, in einer leeren Liste Tasks", async () => {
+    await render();
+    await press("mod+2");
+    expect(title()).toBe("💌me");
+    expect(app().selection).toBe("mama");
+    expect(rowOf("Mama anrufen")?.className).toContain("sel");
+    // Today's done tasks lead the list, so the first row may be a done one.
+    await press("mod+3");
+    expect(app().selection).toBe("praes");
+    await press("down");
+    expect(app().selection).toBe("rechnung");
+
+    const zukunft = "l-zukunft" as Id<"lists">;
+    backend.change(() => data.lists.push(list(zukunft, "Zukunft", "tasks", { position: 9 })));
+    await run(() => app().open({ id: zukunft }));
+    expect(app().selection).toBe(`section:${zukunft}:active`);
+  });
+
+  it("lässt den Inbox-Punkt stehen, bis du die Aufgabe selbst auswählst", async () => {
+    backend.change(() => {
+      const mama = data.tasks.find((task) => task._id === "mama")!;
+      mama.isInbox = true;
+    });
+    await render();
+    await press("mod+2");
+    expect(app().selection).toBe("mama");
+    expect(rowOf("Mama anrufen")?.querySelector(".inb")).not.toBeNull();
+    expect(mutation("tasks:clearInbox")).not.toHaveBeenCalled();
+    await click(rowOf("Mama anrufen"));
+    expect(mutation("tasks:clearInbox")).toHaveBeenCalledWith({ taskId: "mama" });
   });
 
   it("löscht den Inbox-Punkt beim Auswählen still auf dem Server", async () => {
@@ -1580,7 +1615,10 @@ describe("Sonderlisten", () => {
     expect(rowOf("Logo abgestimmt")?.querySelector(".acc .lg")?.textContent).toBe("A");
     expect(rowOf("Weitere laden")).toBeDefined();
 
-    await press("up");
+    // Opening the list selects its first entry; three rows down is "Weitere laden".
+    await press("down");
+    await press("down");
+    await press("down");
     await press("enter");
     expect(texts(".sec")).toEqual(["Heute2", "Gestern1", "Di., 6. Okt.1", "Mo., 5. Okt.1"]);
     expect(rowOf("Weitere laden")).toBeUndefined();
@@ -1608,7 +1646,7 @@ describe("Sonderlisten", () => {
     expect(rowOf("Joggen")?.querySelector(".acc")?.textContent).toBe("pausiert");
     expect(rowOf("Wochenbericht")?.style.getPropertyValue("--acc")).toBe("#ff453a");
 
-    await press("down");
+    // Opening the list already selected its first row.
     await press("mod+k");
     expect(panelRows()).toEqual(["Pausieren", "Umbenennen", "Löschen"]);
     expect($(".pal .pi.danger .pt")?.textContent).toBe("Löschen");

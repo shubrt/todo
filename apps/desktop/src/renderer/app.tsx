@@ -204,12 +204,15 @@ function ListContent({ list }: { list: List }) {
   }
 }
 
-/** Selecting a task from the inbox clears its blue dot on the server. */
+/**
+ * Selecting a task from the inbox clears its blue dot on the server. The automatic selection
+ * when a list opens does not count, so the newest task keeps its dot until you select it.
+ */
 function useInboxClear() {
   const actions = useTaskActions();
   const taskId = useApp((state) => {
     const item = selectedTask(state);
-    return item?.task.isInbox ? item.id : undefined;
+    return item?.task.isInbox && !state.autoSelected ? item.id : undefined;
   });
   useEffect(() => {
     if (taskId) void actions.clearInbox(taskId);
