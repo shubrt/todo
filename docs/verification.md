@@ -23,8 +23,10 @@ nachgebildetes Convex im Arbeitsspeicher und prüft die Argumente der Mutationen
 
 ## Listen und neue Oberfläche
 
-Die Version mit Listen ist nirgends deployt. Die neue Oberfläche lief bisher
-nur gegen ein nachgebildetes Convex in einem versteckten Electron-Fenster.
+Die Version mit Listen läuft seit dem 9. Oktober 2026 im Produktionsbackend.
+Die Umstellung hat dort alle sechs offenen Hauptaufgaben, die Wiederholungen
+und die Einstellungen erfasst. Die neue Oberfläche lief bis dahin nur gegen
+ein nachgebildetes Convex in einem versteckten Electron-Fenster.
 Bildschirmfotos der Ansichten und Panels entsprachen dem Entwurf, und die
 ausgelösten Mutationen hatten die erwarteten Argumente. Auf einem echten Mac
 und gegen ein echtes Backend stehen aus:

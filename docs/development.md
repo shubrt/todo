@@ -183,9 +183,9 @@ im Dashboard lassen sie sich unter Schedules abbrechen.
 ## Umstellung auf Listen
 
 Listen ersetzen die festen Bereiche `me`, `agency` und `work` und das
-Projektfeld. Stand 9. Oktober 2026 ist diese Version nirgends deployt, das
-Produktionsbackend arbeitet noch mit Bereichen. Auch `vp run dev` verbindet
-sich mit dem Backend aus `.env`, also mit diesem alten Stand.
+Projektfeld. Seit dem 9. Oktober 2026 läuft diese Version im
+Produktionsbackend, die Umstellung der vorhandenen Daten ist dort
+abgeschlossen. Ein Snapshot vom Stand davor liegt im Convex-Dashboard.
 
 Das Schema wird dafür nur erweitert. Neu sind die Tabelle `lists` und
 optionale Felder: `listId` und `section` bei Aufgaben, `listId` und `position`
