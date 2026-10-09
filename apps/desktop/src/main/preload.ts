@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopBridge, DesktopView, PublicDesktopState } from "../shared/contracts";
+import type { DesktopBridge, DesktopNavigation, PublicDesktopState } from "../shared/contracts";
 
 const bridge: DesktopBridge = {
   getState: () => ipcRenderer.invoke("desktop:state"),
@@ -11,6 +11,7 @@ const bridge: DesktopBridge = {
   fetchAccessToken: (options) => ipcRenderer.invoke("desktop:token", options),
   setPreferences: (patch) => ipcRenderer.invoke("desktop:preferences", patch),
   hide: () => ipcRenderer.invoke("desktop:hide"),
+  showEmojiPanel: () => ipcRenderer.invoke("desktop:emoji-panel"),
   onState: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: PublicDesktopState) =>
       callback(state);
@@ -18,7 +19,8 @@ const bridge: DesktopBridge = {
     return () => ipcRenderer.removeListener("desktop:state-changed", listener);
   },
   onNavigate: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, view: DesktopView) => callback(view);
+    const listener = (_event: Electron.IpcRendererEvent, target: DesktopNavigation) =>
+      callback(target);
     ipcRenderer.on("desktop:navigate", listener);
     return () => ipcRenderer.removeListener("desktop:navigate", listener);
   },

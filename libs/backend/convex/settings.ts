@@ -3,39 +3,40 @@ import { mutation, query } from "./_generated/server";
 import { requireOwner } from "./auth";
 import {
   applySchedule,
-  createRecurrence,
-  ensureSettings,
+  defaultTimeZone,
+  ensureOwner,
   fail,
+  ownedList,
   processOwnerDay,
   readSettings,
 } from "./domain";
 import { localDate, startOfDate, validateTimeZone } from "./time";
-import { area } from "./validators";
 
+/** `defaultListId` is undefined until the owner is bootstrapped. */
 export const get = query({
   args: {},
   handler: async (ctx) => {
-    const ownerId = await requireOwner(ctx);
-    const settings = await readSettings(ctx, ownerId);
-    return (
-      settings ?? {
-        ownerId,
-        defaultArea: "me" as const,
-        timeZone: "Europe/Berlin",
-        currentLocalDate: localDate(Date.now(), "Europe/Berlin"),
-        habitsInitialized: false,
-      }
-    );
+    const settings = await readSettings(ctx, await requireOwner(ctx));
+    return {
+      defaultListId: settings?.defaultListId,
+      timeZone: settings?.timeZone ?? defaultTimeZone,
+      currentLocalDate: settings?.currentLocalDate ?? localDate(Date.now(), defaultTimeZone),
+    };
   },
 });
 
 export const update = mutation({
-  args: { defaultArea: v.optional(area), timeZone: v.optional(v.string()) },
+  args: { defaultListId: v.optional(v.id("lists")), timeZone: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const ownerId = await requireOwner(ctx);
     if (args.timeZone !== undefined && !validateTimeZone(args.timeZone))
       fail("INVALID_INPUT", "Bitte eine gültige IANA-Zeitzone wählen.");
-    const settings = await ensureSettings(ctx, ownerId);
+    const settings = await ensureOwner(ctx, ownerId);
+    if (
+      args.defaultListId !== undefined &&
+      (await ownedList(ctx, ownerId, args.defaultListId)).kind !== "tasks"
+    )
+      fail("INVALID_INPUT", "Nur normale Listen können Standardliste sein.");
     await ctx.db.patch(settings._id, {
       ...args,
       ...(args.timeZone ? { currentLocalDate: localDate(Date.now(), args.timeZone) } : {}),
@@ -64,21 +65,6 @@ export const update = mutation({
           await applySchedule(ctx, task);
     }
     await processOwnerDay(ctx, ownerId);
-    return null;
-  },
-});
-
-export const initializeHabits = mutation({
-  args: { titles: v.array(v.string()) },
-  handler: async (ctx, args) => {
-    const ownerId = await requireOwner(ctx);
-    const settings = await ensureSettings(ctx, ownerId);
-    if (settings.habitsInitialized)
-      fail("CONFLICT", "Die täglichen Habits wurden bereits eingerichtet.");
-    if (args.titles.length !== 5) fail("INVALID_INPUT", "Bitte die ersten fünf Habits benennen.");
-    for (const title of args.titles)
-      await createRecurrence(ctx, ownerId, { title, kind: "habit", rule: { frequency: "daily" } });
-    await ctx.db.patch(settings._id, { habitsInitialized: true });
     return null;
   },
 });

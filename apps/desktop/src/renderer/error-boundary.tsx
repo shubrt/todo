@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 
+/** Last resort for a render crash: reload, or sign out and reload. */
 export class DesktopErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
@@ -8,15 +9,20 @@ export class DesktopErrorBoundary extends Component<{ children: ReactNode }, { f
   render() {
     if (this.state.failed)
       return (
-        <div className="note-window">
-          <div className="connection-form">
-            <h1>Deine Aufgaben brauchen einen neuen Anlauf.</h1>
-            <p>Der gespeicherte Stand bleibt erhalten. Die Verbindung kann abgelaufen sein.</p>
-            <button className="button primary" onClick={() => window.location.reload()}>
+        <div className="app">
+          <header className="tb">
+            <span className="ttl">todo</span>
+          </header>
+          <div className="login">
+            <p>Deine Aufgaben brauchen einen neuen Anlauf.</p>
+            <small>
+              Der gespeicherte Stand bleibt erhalten. Die Verbindung kann abgelaufen sein.
+            </small>
+            <button className="act" onClick={() => window.location.reload()}>
               Fenster neu laden
             </button>
             <button
-              className="button secondary"
+              className="link"
               onClick={() => {
                 void window.desktop.disconnect().then(() => window.location.reload());
               }}

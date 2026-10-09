@@ -1,75 +1,26 @@
-import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { keycaps } from "./keymap";
 
-// Modal sheet. Escape, the close button and a click on the backdrop call onClose. Sheets can
-// stack: Escape then closes only the topmost one.
-export function Dialog({
-  title,
-  children,
-  onClose,
-  className = "",
-}: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-  /** "top" pins the sheet to the top, for sheets whose height changes (tabs). */
-  className?: string;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const element = dialog.current;
-    element?.showModal();
-    return () => element?.close();
-  }, []);
+/** Joins the truthy class names. */
+export function cx(...names: (string | false | null | undefined)[]) {
+  return names.filter(Boolean).join(" ");
+}
+
+const graphemes = new Intl.Segmenter("de-DE", { granularity: "grapheme" });
+
+/** A list's emoji, or its initial in a small rounded tile when it has none. */
+export function ListMark({ list }: { list: { name: string; emoji?: string } }) {
+  if (list.emoji) return <span className="emo">{list.emoji}</span>;
+  const [first] = graphemes.segment(list.name);
+  return <span className="lg">{first?.segment.toLocaleUpperCase("de-DE")}</span>;
+}
+
+/** Keycaps for a combo like "shift+mod+k" (see keymap.ts). */
+export function Keycaps({ combo }: { combo: string }) {
   return (
-    <dialog
-      ref={dialog}
-      className={`sheet ${className}`}
-      aria-label={title}
-      onCancel={(event) => {
-        // React also hands a nested sheet's cancel to its parents.
-        if (event.target === event.currentTarget) onClose();
-      }}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="sheet-content">
-        <header className="sheet-heading">
-          <h2>{title}</h2>
-          <button className="icon" aria-label="Schließen" onClick={onClose}>
-            <X size={17} />
-          </button>
-        </header>
-        {children}
-      </div>
-    </dialog>
+    <span className="keys">
+      {keycaps(combo).map((key) => (
+        <kbd key={key}>{key}</kbd>
+      ))}
+    </span>
   );
-}
-
-export function dayLabel(day: string) {
-  return new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "short" }).format(
-    new Date(`${day}T12:00:00`),
-  );
-}
-export function dateTimeInput(timestamp: number | undefined) {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
-export function safeError(
-  cause: unknown,
-  fallback = "Die Änderung konnte nicht gespeichert werden. Bitte versuche es erneut.",
-) {
-  const data = cause && typeof cause === "object" && "data" in cause ? cause.data : undefined;
-  if (data && typeof data === "object" && "message" in data && typeof data.message === "string")
-    return data.message;
-  return fallback;
-}
-
-// Electron prefixes errors thrown in IPC handlers; the rest is the main process's German message.
-export function ipcErrorMessage(cause: unknown, fallback: string) {
-  const message = cause instanceof Error ? cause.message : "";
-  const match = /^Error invoking remote method '[^']*': (?:\w*Error: )?([\s\S]+)$/.exec(message);
-  return match?.[1] ?? fallback;
 }

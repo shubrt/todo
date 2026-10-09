@@ -8,34 +8,69 @@ import {
 import { internalMutation, internalQuery } from "./_generated/server";
 import {
   executeCommand,
+  fail,
   getTask,
   listCompletions,
   listTasks,
+  ownedList,
+  ownerLists,
   processOwnerDay,
   readSettings,
 } from "./domain";
 import { requireApiKeyByHash, touchApiKey } from "./auth";
 import { addDays, localDate, startOfDate } from "./time";
 
+/** GET reads. The HTTP layer runs `lists.ensureOwnerInternal` first, so lists exist here. */
 export const read = internalQuery({
   args: {
     tokenHash: v.string(),
-    resource: v.union(v.literal("tasks"), v.literal("task"), v.literal("completions")),
+    resource: v.union(
+      v.literal("lists"),
+      v.literal("tasks"),
+      v.literal("task"),
+      v.literal("completions"),
+    ),
     taskId: v.optional(v.string()),
     filters: v.any(),
   },
   handler: async (ctx, args) => {
     const key = await requireApiKeyByHash(ctx, args.tokenHash);
+    if (args.resource === "lists")
+      return (await ownerLists(ctx, key.ownerId)).map((list) => ({
+        id: list._id,
+        name: list.name,
+        emoji: list.emoji ?? null,
+        color: list.color,
+        kind: list.kind,
+        favorite: list.favorite,
+      }));
     if (args.resource === "task") return getTask(ctx, key.ownerId, args.taskId ?? "");
     if (args.resource === "completions") {
       const parsed = completionFiltersSchema.safeParse(args.filters);
       if (!parsed.success)
         throw new ConvexError({ code: "INVALID_INPUT", message: "Ungültige Verlaufsfilter." });
+      // Deleted lists stay filterable, so only an id that cannot be a list is refused. A
+      // foreign id reads as empty like a deleted one and does not reveal that it exists.
+      if (parsed.data.listId && !ctx.db.normalizeId("lists", parsed.data.listId))
+        fail("NOT_FOUND", "Liste nicht gefunden.");
       return listCompletions(ctx, key.ownerId, parsed.data);
     }
     const parsed = taskFiltersSchema.safeParse(args.filters);
     if (!parsed.success)
       throw new ConvexError({ code: "INVALID_INPUT", message: "Ungültige Aufgabenfilter." });
+    // A stale or mistyped list would otherwise read as an empty list.
+    const list = parsed.data.listId
+      ? await ownedList(ctx, key.ownerId, parsed.data.listId)
+      : parsed.data.area
+        ? ((await ownerLists(ctx, key.ownerId)).find(
+            (item) => item.legacyArea === parsed.data.area,
+          ) ?? fail("NOT_FOUND", "Liste nicht gefunden."))
+        : undefined;
+    if (list && list.kind !== "tasks" && list.kind !== "habits")
+      fail(
+        "INVALID_INPUT",
+        "Diese Liste hat keine eigenen Aufgaben. Wichtig liest view=important.",
+      );
     const filters = { view: "all" as const, ...parsed.data };
     const tasks = await listTasks(ctx, key.ownerId, filters);
     const roots = tasks.filter((task) => !task.parentId);
@@ -53,7 +88,10 @@ export const read = internalQuery({
   },
 });
 
-/** Bring scheduled day transitions up to date before exposing the habit snapshot. */
+/**
+ * Today's instances in the Habits list. Brings scheduled day transitions (and the list
+ * migration) up to date first.
+ */
 export const habitSnapshot = internalMutation({
   args: { tokenHash: v.string() },
   handler: async (ctx, { tokenHash }): Promise<HabitSnapshot> => {

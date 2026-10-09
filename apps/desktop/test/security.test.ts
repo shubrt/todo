@@ -33,9 +33,34 @@ describe("Desktop-Grenzen", () => {
     expect(() => validatePreferences({ ownerId: "somebody" })).toThrow();
     expect(() => validatePreferences({ alwaysOnTop: "true" })).toThrow();
     expect(() => validatePreferences({ shortcut: "Space" })).toThrow();
+    expect(() => validatePreferences({ tint: "forest" })).toThrow();
     expect(
-      validatePreferences({ shortcut: "CommandOrControl+Shift+Space", tint: "forest" }),
-    ).toEqual({ shortcut: "CommandOrControl+Shift+Space", tint: "forest" });
+      validatePreferences({ shortcut: "CommandOrControl+Shift+Space", allSpaces: false }),
+    ).toEqual({ shortcut: "CommandOrControl+Shift+Space", allSpaces: false });
+  });
+
+  it("verlangt für den globalen Kurzbefehl einen Modifier außer Shift", () => {
+    for (const shortcut of ["Shift+A", "Shift+Space", "shift+Shift+Return"])
+      expect(() => validatePreferences({ shortcut })).toThrow("⇧ allein reicht nicht");
+    for (const shortcut of ["Alt+Shift+L", "Control+Space", "Shift+Command+1"])
+      expect(validatePreferences({ shortcut })).toEqual({ shortcut });
+  });
+
+  it("behält gespeicherte Einstellungen, wenn window.json noch die alte Fensterfarbe enthält", () => {
+    const saved = {
+      alwaysOnTop: false,
+      allSpaces: false,
+      launchAtLogin: true,
+      shortcut: "Alt+Space",
+      tint: "plum",
+      toString: "legacy",
+    };
+    expect(loadPreferences(saved)).toEqual({
+      alwaysOnTop: false,
+      allSpaces: false,
+      launchAtLogin: true,
+      shortcut: "Alt+Space",
+    });
   });
 
   it("prüft Schlüsselnamen und Text für die Zwischenablage", () => {

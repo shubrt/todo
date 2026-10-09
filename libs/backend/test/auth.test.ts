@@ -3,6 +3,7 @@ import { convexTest } from "convex-test";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
+import type { Id } from "../convex/_generated/dataModel";
 import { ownerForClaims, publicJwks, sha256, verifyShooToken } from "../convex/authCrypto";
 import { canonicalJson, errorResponse, readJson, routeCommand } from "../convex/httpHelpers";
 
@@ -320,7 +321,7 @@ describe("key management", () => {
     expect((await t.run((ctx) => ctx.db.get(capture.id)))?.revokedAt).toBe(revokedAt);
     expect((await t.fetch("/api/v1/tasks", { headers })).status).toBe(401);
     await expect(user.mutation(api.auth.revokeApiKey, { id: keyId })).rejects.toThrow(
-      /Verbindung entfernen/,
+      /Schlüssel dieser App/,
     );
     await expect(user.mutation(api.auth.revokeApiKey, { id: foreign.id })).rejects.toThrow(
       /NOT_FOUND/,
@@ -359,6 +360,22 @@ describe("key management", () => {
 });
 
 describe("external API", () => {
+  type Client = Awaited<ReturnType<typeof fixture>>["t"];
+  const get = (t: Client, path: string) =>
+    t.fetch(path, { headers: { authorization: `Bearer ${rawKey}` } });
+  /** A JSON POST under its own idempotency key. */
+  const post = (t: Client, path: string, key: string, body: object = {}) =>
+    t.fetch(path, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${rawKey}`,
+        "content-type": "application/json",
+        "idempotency-key": key,
+      },
+      body: JSON.stringify(body),
+    });
+  type ApiList = { id: string; name: string; kind: string };
+
   it("commits idempotency and create atomically, with conflicting payload rejection", async () => {
     const { t, tokenHash } = await fixture();
     const args = {
@@ -447,6 +464,177 @@ describe("external API", () => {
     expect(second.data.items[0].title).toBe("Deferred");
     expect(second.data.nextCursor).toBeNull();
   });
+  it("serves the lists and files captures by listId or by the deprecated area", async () => {
+    const { t } = await fixture();
+    const lists: ApiList[] = (await (await get(t, "/api/v1/lists")).json()).data;
+    expect(lists.map((list) => list.name)).toEqual([
+      "Wichtig",
+      "me",
+      "agency",
+      "work",
+      "Habits",
+      "Verlauf",
+      "Wiederholungen",
+    ]);
+    const [, , agency, work] = lists;
+    expect(work).toEqual({
+      id: expect.any(String),
+      name: "work",
+      emoji: "💻",
+      color: "#ff453a",
+      kind: "tasks",
+      favorite: true,
+    });
+    const byId = await post(t, "/api/v1/tasks", "by-id", {
+      title: "Rechnung",
+      listId: work!.id,
+      section: "backlog",
+    });
+    expect(byId.status).toBe(201);
+    const byArea = await post(t, "/api/v1/tasks", "by-area", {
+      title: "Angebot",
+      area: "agency",
+      list: "backlog",
+      projectName: "Kunde",
+    });
+    expect(byArea.status).toBe(201);
+    const inWork = await (await get(t, `/api/v1/tasks?listId=${work!.id}`)).json();
+    expect(inWork.data.items).toEqual([
+      expect.objectContaining({
+        _id: (await byId.json()).data.id,
+        listId: work!.id,
+        section: "backlog",
+      }),
+    ]);
+    const inAgency = await (await get(t, "/api/v1/tasks?area=agency&list=backlog")).json();
+    expect(inAgency.data.items).toHaveLength(1);
+    expect(inAgency.data.items[0]).toMatchObject({ title: "Angebot", listId: agency!.id });
+    expect(inAgency.data.items[0]).not.toHaveProperty("projectName");
+    expect((await get(t, "/api/v1/lists?kind=tasks")).status).toBe(400);
+  });
+  it("answers foreign and unknown list ids with 404 and special lists with 400", async () => {
+    const { t } = await fixture();
+    const lists: ApiList[] = (await (await get(t, "/api/v1/lists")).json()).data;
+    const habits = lists.find((list) => list.kind === "habits")!;
+    const important = lists.find((list) => list.kind === "important")!;
+    const agency = lists.find((list) => list.name === "agency")!;
+    const foreign = await t.run((ctx) =>
+      ctx.db.insert("lists", {
+        ownerId: "someone-else",
+        name: "Fremd",
+        color: "#ff453a",
+        kind: "tasks",
+        favorite: false,
+        position: 0,
+        createdAt: Date.now(),
+      }),
+    );
+    const create = (key: string, listId: string) =>
+      post(t, "/api/v1/tasks", key, { title: "Task", listId });
+    expect((await create("foreign", foreign)).status).toBe(404);
+    expect((await create("unknown", "not-a-list")).status).toBe(404);
+    expect((await create("habits", habits.id)).status).toBe(400);
+    expect((await get(t, `/api/v1/tasks?listId=${foreign}`)).status).toBe(404);
+    expect((await get(t, `/api/v1/tasks?listId=${habits.id}`)).status).toBe(200);
+    const wichtig = await get(t, `/api/v1/tasks?listId=${important.id}`);
+    expect(wichtig.status).toBe(400);
+    expect((await wichtig.json()).error.message).toMatch(/view=important/);
+    // Completions of deleted lists stay readable, so only ids that cannot be a list are refused.
+    expect((await get(t, "/api/v1/completions?listId=not-a-list")).status).toBe(404);
+    const foreignHistory = await get(t, `/api/v1/completions?listId=${foreign}`);
+    expect((await foreignHistory.json()).data).toEqual({ items: [], nextCursor: null });
+    await t.run((ctx) => ctx.db.delete(agency.id as Id<"lists">));
+    expect((await get(t, "/api/v1/tasks?area=agency")).status).toBe(404);
+    const own = (await (await post(t, "/api/v1/tasks", "own", { title: "Eigene" })).json()).data;
+    const move = await post(t, `/api/v1/tasks/${own.id}/move`, "move", { listId: foreign });
+    expect(move.status).toBe(404);
+    expect(await t.run((ctx) => ctx.db.query("tasks").collect())).toHaveLength(1);
+  });
+  it("reopens a task completed today through its route", async () => {
+    const { t } = await fixture();
+    const { id } = (await (await post(t, "/api/v1/tasks", "create", { title: "Belege" })).json())
+      .data;
+    expect((await post(t, `/api/v1/tasks/${id}/complete`, "complete")).status).toBe(200);
+    const reopened = await post(t, `/api/v1/tasks/${id}/reopen`, "reopen");
+    expect(reopened.status).toBe(200);
+    expect((await reopened.json()).data.id).toBe(id);
+    expect((await (await get(t, `/api/v1/tasks/${id}`)).json()).data.state).toBe("open");
+    expect(await t.run((ctx) => ctx.db.query("completions").collect())).toEqual([]);
+  });
+  it("migrates legacy area data before the first HTTP read", async () => {
+    vi.setSystemTime(new Date("2026-09-05T10:00:00Z"));
+    const { t } = await fixture();
+    const now = Date.now();
+    const legacy = {
+      ownerId,
+      kind: "task" as const,
+      position: 0,
+      isInbox: false,
+      isAi: false,
+      highPriority: false,
+      scheduleVersion: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await t.run(async (ctx) => {
+      await ctx.db.insert("settings", {
+        ownerId,
+        defaultArea: "work",
+        timeZone: "Europe/Berlin",
+        currentLocalDate: "2026-09-05",
+        habitsInitialized: true,
+      });
+      const root = await ctx.db.insert("tasks", {
+        ...legacy,
+        title: "Angebot",
+        area: "agency",
+        list: "backlog",
+        projectName: "Kunde",
+        state: "open",
+      });
+      await ctx.db.insert("tasks", { ...legacy, parentId: root, title: "Entwurf", state: "open" });
+      const done = await ctx.db.insert("tasks", {
+        ...legacy,
+        title: "Rechnung",
+        area: "agency",
+        state: "done",
+        completedAt: now,
+        completedLocalDate: "2026-09-04",
+        archivedAt: now,
+      });
+      await ctx.db.insert("completions", {
+        ownerId,
+        taskId: done,
+        titleSnapshot: "Rechnung",
+        areaSnapshot: "agency",
+        projectNameSnapshot: "Kunde",
+        completedAt: now,
+        completedLocalDate: "2026-09-04",
+        timeZoneSnapshot: "Europe/Berlin",
+        kind: "task",
+      });
+    });
+    // Before the migration no list carries the legacy area, so this read would be empty.
+    const tasks = await (await get(t, "/api/v1/tasks?area=agency")).json();
+    const lists: ApiList[] = (await (await get(t, "/api/v1/lists")).json()).data;
+    const agency = lists.find((list) => list.name === "agency")!;
+    expect(tasks.data.items).toEqual([
+      expect.objectContaining({
+        title: "Angebot",
+        listId: agency.id,
+        section: "backlog",
+        subtasks: [expect.objectContaining({ title: "Entwurf", listId: agency.id })],
+      }),
+    ]);
+    expect(tasks.data.items[0]).not.toHaveProperty("area");
+    const history = await (await get(t, `/api/v1/completions?listId=${agency.id}`)).json();
+    expect(history.data.items).toEqual([
+      expect.objectContaining({ titleSnapshot: "Rechnung", listId: agency.id }),
+    ]);
+    expect((await t.run((ctx) => ctx.db.query("settings").unique()))?.defaultListId).toBe(
+      lists.find((list) => list.name === "work")!.id,
+    );
+  });
   it("rejects unknown fields, oversized payloads and absent idempotency keys", async () => {
     const { t } = await fixture();
     const headers = {
@@ -454,15 +642,17 @@ describe("external API", () => {
       "content-type": "application/json",
       "idempotency-key": "invalid",
     };
-    expect(
-      (
-        await t.fetch("/api/v1/tasks", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ title: "Task", ownerId: "intruder" }),
-        })
-      ).status,
-    ).toBe(400);
+    // `list` is the deprecated name of `section`, never a list name.
+    for (const extra of [{ ownerId: "intruder" }, { listName: "work" }, { list: "work" }])
+      expect(
+        (
+          await t.fetch("/api/v1/tasks", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ title: "Task", ...extra }),
+          })
+        ).status,
+      ).toBe(400);
     expect(
       (
         await t.fetch("/api/v1/tasks", {
@@ -483,13 +673,36 @@ describe("external API", () => {
     ).toBe(400);
     expect((await t.fetch("/api/v1/tasks?limit=501", { headers })).status).toBe(400);
     expect((await t.fetch("/api/v1/tasks", {})).status).toBe(401);
+    // Deprecated aliases never combine with the fields replacing them.
+    const lists: ApiList[] = (await (await get(t, "/api/v1/lists")).json()).data;
+    const mixed = await post(t, "/api/v1/tasks", "mixed", {
+      title: "Task",
+      listId: lists[1]!.id,
+      area: "work",
+    });
+    expect(mixed.status).toBe(400);
+    expect((await mixed.json()).error.message).toMatch(/nicht zusammen mit listId/);
+    expect((await get(t, `/api/v1/tasks?listId=${lists[1]!.id}&area=me`)).status).toBe(400);
+    expect((await get(t, "/api/v1/tasks?section=active&list=backlog")).status).toBe(400);
+    expect((await get(t, "/api/v1/completions?from=2026-09-05&to=2026-09-01")).status).toBe(400);
+    // Query parameters are refused where nothing reads them.
+    const misplaced = await post(t, `/api/v1/tasks?listId=${lists[3]!.id}`, "query", {
+      title: "Task",
+    });
+    expect(misplaced.status).toBe(400);
+    const { id } = (await (await post(t, "/api/v1/tasks", "plain", { title: "Task" })).json()).data;
+    expect((await get(t, `/api/v1/tasks/${id}?view=all`)).status).toBe(400);
+    expect((await post(t, `/api/v1/tasks/${id}/complete?force=1`, "force")).status).toBe(400);
+    expect(await t.run((ctx) => ctx.db.query("tasks").collect())).toHaveLength(1);
   });
   it("canonicalizes object order and never returns internal exception details", async () => {
     expect(canonicalJson({ b: 1, a: { c: 2 } })).toBe(canonicalJson({ a: { c: 2 }, b: 1 }));
     expect(await errorResponse(new Error("private token secret"), "request").text()).not.toContain(
       "private token secret",
     );
-    expect(() => routeCommand("PATCH", "/api/v1/tasks/task", { parentId: "child" })).toThrow();
+    expect(() =>
+      routeCommand("PATCH", new URL("http://local/api/v1/tasks/task"), { parentId: "child" }),
+    ).toThrow();
     await expect(
       readJson(
         new Request("http://local", {

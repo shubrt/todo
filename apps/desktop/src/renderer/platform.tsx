@@ -54,15 +54,38 @@ export function usePlatform() {
   return context;
 }
 
+/** Setter for the outcome of the last token fetch, provided by ConnectedProvider. */
+const TokenRejectedContext = createContext<{
+  rejected: boolean;
+  setRejected: (rejected: boolean) => void;
+} | null>(null);
+
+/**
+ * Whether the main process refused the device key on the last token fetch (no token, as
+ * opposed to an unreachable server). Signed out for that reason, the window asks for a new
+ * login; for any other failure it offers to reconnect.
+ */
+export function useTokenRejected() {
+  return useContext(TokenRejectedContext)?.rejected ?? false;
+}
+
 function useDeviceAuth() {
   const { state } = usePlatform();
-  const fetchAccessToken = useCallback(async (options: { forceRefreshToken: boolean }) => {
-    try {
-      return await window.desktop.fetchAccessToken(options);
-    } catch {
-      return null;
-    }
-  }, []);
+  const setRejected = useContext(TokenRejectedContext)?.setRejected;
+  const fetchAccessToken = useCallback(
+    async (options: { forceRefreshToken: boolean }) => {
+      try {
+        const token = await window.desktop.fetchAccessToken(options);
+        setRejected?.(token === null);
+        return token;
+      } catch {
+        // Offline or the server is down: the key may still be fine.
+        setRejected?.(false);
+        return null;
+      }
+    },
+    [setRejected],
+  );
   return { isLoading: !state, isAuthenticated: Boolean(state?.configured), fetchAccessToken };
 }
 
@@ -74,6 +97,7 @@ export function ConnectedProvider({
   children: ReactNode;
 }) {
   const [client] = useState(() => new ConvexReactClient(cloudUrl));
+  const [rejected, setRejected] = useState(false);
   useEffect(
     () => () => {
       // ConvexProviderWithAuth clears auth in its child cleanup. Let that finish
@@ -85,8 +109,10 @@ export function ConnectedProvider({
     [client],
   );
   return (
-    <ConvexProviderWithAuth client={client} useAuth={useDeviceAuth}>
-      {children}
-    </ConvexProviderWithAuth>
+    <TokenRejectedContext.Provider value={{ rejected, setRejected }}>
+      <ConvexProviderWithAuth client={client} useAuth={useDeviceAuth}>
+        {children}
+      </ConvexProviderWithAuth>
+    </TokenRejectedContext.Provider>
   );
 }

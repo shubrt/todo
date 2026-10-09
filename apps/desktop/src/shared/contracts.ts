@@ -1,21 +1,17 @@
-export type DesktopView =
-  | "priority"
-  | "me"
-  | "agency"
-  | "work"
-  | "habits"
-  | "recurrences"
-  | "history";
+/** Targets the tray menu opens in the window: a special list, the Cmd+P switcher or settings. */
+export type DesktopNavigation = "important" | "history" | "recurrences" | "switcher" | "settings";
+/** Per-Mac window preferences, stored in userData/window.json next to the window bounds. */
 export type DesktopPreferences = {
   alwaysOnTop: boolean;
   allSpaces: boolean;
   launchAtLogin: boolean;
   shortcut: string;
-  tint: "graphite" | "plum" | "forest";
 };
 export type PublicDesktopState = {
   configured: boolean;
-  /** Set for dev runs and branch packages, shown in the title bar. */
+  /** App version, e.g. "0.2.0", shown in the settings info section. */
+  version: string;
+  /** Set for dev runs and branch packages so the window can tell them apart from the real app. */
   variant?: string;
   cloudUrl?: string;
   siteUrl?: string;
@@ -46,8 +42,14 @@ export type DesktopBridge = {
   fetchAccessToken: (options: { forceRefreshToken: boolean }) => Promise<string | null>;
   setPreferences: (patch: Partial<DesktopPreferences>) => Promise<PublicDesktopState>;
   hide: () => Promise<void>;
+  /**
+   * Opens the macOS emoji picker. The picked emoji is typed into the focused text field, so
+   * focus an input before calling this.
+   */
+  showEmojiPanel: () => Promise<void>;
   onState: (callback: (state: PublicDesktopState) => void) => () => void;
-  onNavigate: (callback: (view: DesktopView) => void) => () => void;
+  /** Called when the tray menu asks the window to open a target. The window is already shown. */
+  onNavigate: (callback: (target: DesktopNavigation) => void) => () => void;
 };
 
 declare global {

@@ -2,13 +2,13 @@ import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireOwner } from "./auth";
 import { listCompletions } from "./domain";
-import { area } from "./validators";
 
+/** Verlauf, newest day first, paginated by `cursor`; `listId` also matches pre-list rows. */
 export const list = query({
   args: {
     from: v.optional(v.string()),
     to: v.optional(v.string()),
-    area: v.optional(area),
+    listId: v.optional(v.id("lists")),
     limit: v.optional(v.number()),
     cursor: v.optional(v.string()),
   },

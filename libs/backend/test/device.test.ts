@@ -37,6 +37,15 @@ async function fixture(expiresAt?: number) {
   return { t, keyId, tokenHash, device: t.withIdentity({ subject: ownerId, apiKeyId: keyId }) };
 }
 
+async function createHabits(device: Awaited<ReturnType<typeof fixture>>["device"]) {
+  for (const title of ["Read", "Walk", "Stretch", "Water", "Plan"])
+    await device.mutation(api.recurrences.create, {
+      title,
+      kind: "habit",
+      rule: { frequency: "daily" },
+    });
+}
+
 async function signingKeys() {
   const keys = await generateKeyPair("ES256", { extractable: true });
   vi.stubEnv("AUTH_JWT_ISSUER", "https://test-deployment.eu-west-1.convex.site");
@@ -172,9 +181,8 @@ describe("native credential bridge", () => {
 describe("widget habit snapshot", () => {
   it("returns today's progress and makes repeated widget completions idempotent", async () => {
     const { t, device } = await fixture();
-    await device.mutation(api.settings.initializeHabits, {
-      titles: ["Read", "Walk", "Stretch", "Water", "Plan"],
-    });
+    await createHabits(device);
+    await device.mutation(api.tasks.create, { title: "Not a habit", isInbox: false });
     const first = await (await t.fetch("/api/v1/habits/snapshot", { headers })).json();
     expect(first.data).toMatchObject({
       localDate: "2026-09-05",
@@ -207,9 +215,7 @@ describe("widget habit snapshot", () => {
 
   it("advances across midnight without a cron tick and rejects the previous habit occurrence", async () => {
     const { t, device } = await fixture();
-    await device.mutation(api.settings.initializeHabits, {
-      titles: ["Read", "Walk", "Stretch", "Water", "Plan"],
-    });
+    await createHabits(device);
     const old = await (await t.fetch("/api/v1/habits/snapshot", { headers })).json();
     vi.setSystemTime(new Date("2026-09-05T22:00:01Z"));
     const current = await (await t.fetch("/api/v1/habits/snapshot", { headers })).json();
