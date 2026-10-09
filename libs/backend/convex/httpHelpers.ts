@@ -77,6 +77,14 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** Rejects invalid input with the German message of a refine, else with `fallback`. */
+function invalidInput(issues: readonly { code: string; message: string }[], fallback: string) {
+  return new ConvexError({
+    code: "INVALID_INPUT",
+    message: issues.find((issue) => issue.code === "custom")?.message ?? fallback,
+  });
+}
+
 export function parseFilters(url: URL, completions = false) {
   const values: Record<string, unknown> = Object.fromEntries(url.searchParams);
   if (values.limit !== undefined) values.limit = Number(values.limit);
@@ -89,16 +97,42 @@ export function parseFilters(url: URL, completions = false) {
   }
   const parsed = (completions ? completionFiltersSchema : taskFiltersSchema).safeParse(values);
   if (!parsed.success)
-    throw new ConvexError({
-      code: "INVALID_INPUT",
-      message:
-        "Ungültige Filter. limit muss zwischen 1 und 500 liegen; Daten im Format YYYY-MM-DD.",
-    });
+    throw invalidInput(
+      parsed.error.issues,
+      "Ungültige Filter. limit muss zwischen 1 und 500 liegen; Daten im Format YYYY-MM-DD.",
+    );
   return parsed.data;
 }
 
-export function routeCommand(method: string, path: string, body: Record<string, unknown>): Command {
-  const parts = path
+/** Turns a GET path (other than the habit snapshot) into an `apiCommands.read` request. */
+export function routeRead(url: URL) {
+  if (url.pathname === "/api/v1/lists") {
+    if (url.search)
+      throw new ConvexError({ code: "INVALID_INPUT", message: "Listen benötigen keine Filter." });
+    return { resource: "lists", filters: {} } as const;
+  }
+  if (url.pathname === "/api/v1/completions")
+    return { resource: "completions", filters: parseFilters(url, true) } as const;
+  if (url.pathname === "/api/v1/tasks")
+    return { resource: "tasks", filters: parseFilters(url) } as const;
+  const taskId = url.pathname.match(/^\/api\/v1\/tasks\/([^/]+)$/)?.[1];
+  if (!taskId) throw new ConvexError({ code: "NOT_FOUND", message: "Nicht gefunden." });
+  if (url.search)
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message: "Eine Aufgabe benötigt keine Filter.",
+    });
+  return { resource: "task", taskId, filters: {} } as const;
+}
+
+/** Turns a write request into a command; its input comes in the body, never in the query. */
+export function routeCommand(method: string, url: URL, body: Record<string, unknown>): Command {
+  if (url.search)
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message: "Schreibbefehle nehmen keine Query-Parameter an.",
+    });
+  const parts = url.pathname
     .replace(/^\/api\/v1\/tasks\/?/, "")
     .split("/")
     .filter(Boolean);
@@ -125,6 +159,7 @@ export function routeCommand(method: string, path: string, body: Record<string, 
     const types: Record<string, string> = {
       subtasks: "addSubtask",
       complete: "complete",
+      reopen: "reopen",
       move: "move",
       "clear-inbox": "clearInbox",
       snooze: "snooze",
@@ -138,10 +173,10 @@ export function routeCommand(method: string, path: string, body: Record<string, 
     throw new ConvexError({ code: "NOT_FOUND", message: "Diese API-Operation existiert nicht." });
   const parsed = commandSchema.safeParse(command);
   if (!parsed.success)
-    throw new ConvexError({
-      code: "INVALID_INPUT",
-      message: "Die Anfrage enthält fehlende, ungültige oder nicht erlaubte Felder.",
-    });
+    throw invalidInput(
+      parsed.error.issues,
+      "Die Anfrage enthält fehlende, ungültige oder nicht erlaubte Felder.",
+    );
   return parsed.data;
 }
 

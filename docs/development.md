@@ -172,13 +172,91 @@ Anmeldung in der Desktop-App zeigt den Eintrag, Schritt 5 oben beschreibt das
 Ergänzen. Einträge für alte Web-Origins liest das Backend nicht mehr.
 `APP_ALLOWED_ORIGINS` wird nicht mehr verwendet und kann aus der
 Convex-Umgebung entfernt werden. Vorhandene Schlüssel bleiben gültig. Sie
-haben kein `kind` und stehen in der App unter Einstellungen > Schlüssel in der
-Gruppe "Ohne Typ", wo sich nicht mehr gebrauchte widerrufen lassen.
+haben kein `kind` und stehen in der App unter Einstellungen > Schlüssel, wo
+sich nicht mehr gebrauchte widerrufen lassen.
 Die Tabelle `sessions` steht nicht mehr im Schema. Ihre alten Dokumente
 blockieren keinen Deploy und lassen sich bei Bedarf im Dashboard löschen.
 Noch geplante Jobs `auth:expireSession` laufen bis zu 30 Tage nach dem
 Deploy ins Leere und schlagen fehl, weil die Funktion fehlt. Das ist harmlos,
 im Dashboard lassen sie sich unter Schedules abbrechen.
+
+## Umstellung auf Listen
+
+Listen ersetzen die festen Bereiche `me`, `agency` und `work` und das
+Projektfeld. Stand 9. Oktober 2026 ist diese Version nirgends deployt, das
+Produktionsbackend arbeitet noch mit Bereichen. Auch `vp run dev` verbindet
+sich mit dem Backend aus `.env`, also mit diesem alten Stand.
+
+Das Schema wird dafür nur erweitert. Neu sind die Tabelle `lists` und
+optionale Felder: `listId` und `section` bei Aufgaben, `listId` und `position`
+bei Wiederholungen, `listId`, `listNameSnapshot`, `listEmojiSnapshot` und
+`recurrenceId` bei Erledigungen sowie `defaultListId` und `listsMigratedAt` in
+den Einstellungen. Die alten Felder `area`, `list`, `projectName`,
+`defaultArea` und `habitsInitialized` bleiben als optionale Felder im Schema.
+Nur der ungenutzte Index `tasks.by_owner_list` fällt weg. Vorhandene Dokumente
+passen damit ohne Vorarbeit, der Deploy läuft wie jeder andere über
+`node scripts/convex.mjs deploy --typecheck enable`.
+
+Nach dem Deploy stellt `ensureOwner` in `libs/backend/convex/domain.ts` jeden
+Besitzer einmal um. Der Minutencron ruft es für alle Besitzer auf, außerdem
+jeder Schreibbefehl, `lists.bootstrap` beim Start der App und jeder lesende
+Aufruf der HTTP-API. Spätestens eine Minute nach dem Deploy ist die Umstellung
+deshalb erledigt, auch ohne geöffnete App. Sie läuft in einer einzigen
+Transaktion:
+
+1. Sie legt die sieben Startlisten Wichtig, me, agency, work, Habits, Verlauf
+   und Wiederholungen an. Schon vorhandene Listen derselben Art verwendet sie
+   wieder.
+2. Jede nicht archivierte Hauptaufgabe bekommt `listId` und `section`.
+   Archivierte bleiben unverändert, sie erscheinen in keiner Liste mehr. Habits
+   kommen in die Liste Habits, andere Aufgaben in die Liste ihres Bereichs,
+   ohne Bereich in me. `section` übernimmt den alten Wert von `list`, sonst
+   gilt `active`. Subtasks bleiben unverändert, sie erben Liste und Abschnitt
+   beim Lesen.
+3. Jede Wiederholung bekommt nach derselben Regel eine `listId` und eine
+   `position` in der Reihenfolge ihrer Anlage.
+4. `defaultListId` zeigt auf die Liste des alten `defaultArea`, ohne Wert auf
+   me. Zuletzt setzt sie `listsMigratedAt`.
+
+Danach kostet `ensureOwner` nur noch einen Lesezugriff, ein weiterer Aufruf
+ändert nichts. Erledigungen schreibt die Umstellung nicht um. Alte Einträge
+behalten `areaSnapshot` und `projectNameSnapshot`. Ihre `listId` leiten
+`completions.list` und die API beim Lesen aus dem Bereich ab, Habits gehören
+dabei zur Liste Habits. Die Listen me, agency und work tragen `legacyArea`.
+Darüber findet das veraltete API-Feld `area` seine Liste auch nach einer
+Umbenennung. Convex begrenzt die Zahl der Schreibzugriffe pro Transaktion.
+Weil nur nicht archivierte Aufgaben umgestellt werden, bleibt ein persönlicher
+Bestand weit darunter.
+
+`projectName` bleibt in den alten Dokumenten stehen, aber kein Code liest oder
+schreibt es mehr. Aus Projekten werden keine Listen. Wer ein Projekt als Liste
+weiterführen will, legt sie in der App an und verschiebt die Aufgaben mit
+`⇧⌘M`. `settings.initializeHabits`, `tasks.summary` und `tasks.projects` gibt
+es nicht mehr.
+
+App und Backend gehören zusammen. Eine installierte ältere App ruft
+`tasks.summary` und `settings.initializeHabits` auf und funktioniert nach dem
+Deploy nicht mehr. Die neue App braucht `lists.bootstrap`. Gegen ein altes
+Backend zeigt sie nur einen Fehler und ändert nichts. Deshalb direkt nach dem
+Deploy die neue App bauen und installieren. Integrationen über die HTTP-API
+laufen weiter, weil die API die alten Felder annimmt, siehe
+[Veraltete Felder](api.md#veraltete-felder). Ihre Antworten enthalten `area`,
+`list` und `projectName` aber nicht mehr.
+
+Vor dem Deploy im Convex-Dashboard ein Backup anlegen. Nach der Umstellung
+führt kein einfacher Deploy zurück zum alten Code. Convex prüft beim Deploy
+alle Dokumente gegen das Schema, und das alte Schema kennt `listId` und
+`section` nicht. Was nach dem Deploy mit echten Daten zu prüfen ist, steht in
+[Verifikation](verification.md).
+
+Das Schema später zu verengen, ist ein eigener, bewusster Schritt mit eigenem
+Deploy. Er setzt voraus, dass jeder Besitzer `listsMigratedAt` hat. Vorher muss
+eine Migration die alten Felder aus allen Aufgaben, Wiederholungen und
+Einstellungen entfernen, sonst lehnt Convex das engere Schema ab. Erst danach
+können die Felder aus `schema.ts` und der Code, der sie liest, aus
+`domain.ts` verschwinden. `areaSnapshot` und `projectNameSnapshot` alter
+Erledigungen bleiben, sie sind Historie. `legacyArea` bleibt, solange die API
+das Feld `area` annimmt.
 
 ## Konfiguration
 

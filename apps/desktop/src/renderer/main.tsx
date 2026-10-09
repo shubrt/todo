@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { DesktopApp } from "./workspace";
+import { DesktopApp } from "./app";
 import { DesktopErrorBoundary } from "./error-boundary";
 import "./styles.css";
 

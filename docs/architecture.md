@@ -59,19 +59,49 @@ API-Schreibbefehle und der Habit-Stand, höchstens einmal pro Stunde. Lesende
 API-Aufrufe ändern es nicht.
 Die Mutation `auth.revokeApiKey` widerruft einen Schlüssel per `id`. Für einen
 schon widerrufenen Schlüssel ändert sie nichts. Den Schlüssel der aufrufenden
-App lehnt sie mit `INVALID_INPUT` ab, dafür gibt es "Verbindung entfernen".
+App lehnt sie mit `INVALID_INPUT` ab, dafür gibt es "Abmelden".
 Beide Funktionen prüfen das Geräte-JWT wie `requireOwner` und arbeiten nur
 auf Schlüsseln desselben Besitzers. Anmeldung und Schlüsselverwaltung aus
 Sicht der App beschreibt die Desktop-Dokumentation unter
 [Anmelden](desktop.md#anmelden) und [Schlüssel](desktop.md#schlüssel).
 
+## Listen
+
+Die Tabelle `lists` hält die Listen eines Besitzers mit Name, Farbe, Emoji,
+Favorit und Position. `kind` unterscheidet normale Listen (`tasks`) von den
+festen Listen `habits`, `important`, `history` und `recurrences`, die es je
+Besitzer genau einmal gibt. Hauptaufgaben tragen `listId` und `section`
+(`active` oder `backlog`), Subtasks erben beides beim Lesen vom Parent.
+Wiederholungen tragen `listId` und bei Habits eine `position`. Die
+Einstellungen nennen die Standardliste in `defaultListId`. Die Position der
+Listen ordnet die Favoriten in der Seitenleiste. `lists.reorder` stellt die
+übergebenen Listen an den Anfang, die übrigen behalten ihre Reihenfolge
+dahinter.
+
+`lists.remove` lehnt feste Listen und die Standardliste ab, andere Listen,
+solange eine aktuelle Aufgabe oder eine Wiederholung, auch eine pausierte, auf
+sie verweist. `recurrences.remove` löscht eine Vorlage und verwirft dabei ihre
+offene Instanz wie `discard`, also ohne Erledigung. Erledigungen und eine heute
+erledigte Instanz bleiben.
+
+Queries können nichts anlegen. Deshalb ruft die App nach der Anmeldung
+`lists.bootstrap` auf, und die HTTP-API führt vor jedem Lesezugriff
+`ensureOwner` als Mutation aus. `ensureOwner` legt fehlende Startlisten an und
+stellt Daten aus der Zeit der festen Bereiche einmal je Besitzer um. Jeder
+Schreibbefehl und der Minutencron rufen es ebenfalls auf. Einzelheiten zur
+Umstellung stehen in [Entwicklung](development.md#umstellung-auf-listen).
+
 ## Aufgaben, Historie und Zeit
 
 Aktueller Zustand und Erledigungsnachweise liegen in getrennten Tabellen.
-Abschluss und Snapshot entstehen atomar. Eine spätere Umbenennung oder
-Archivierung verändert die Historie nicht. Wiederholungen speichern Vorlagen
-und verarbeitete Kalenderperioden; die Prüfung und Erzeugung erfolgen in einer
-Transaktion.
+Abschluss und Snapshot entstehen atomar. Der Snapshot hält Titel,
+Parent-Titel, `listId` sowie Name und Emoji der Liste fest. Eine spätere
+Umbenennung, das Löschen der Liste oder die Archivierung verändert die
+Historie nicht. Einzige Ausnahme ist das Wiederöffnen am selben lokalen Tag.
+`tasks.reopen` löscht dann in derselben Transaktion den Nachweis der Aufgabe,
+denn die Arbeit gilt als nicht getan. Nach der nächtlichen Archivierung lehnt
+die Mutation ab. Wiederholungen speichern Vorlagen und verarbeitete
+Kalenderperioden; die Prüfung und Erzeugung erfolgen in einer Transaktion.
 
 Ein Backend-Cron führt Tageswechsel aus und holt versäumte Zeitübergänge nach.
 Geplante Aktivierungen prüfen eine Versionsnummer, damit alte Jobs geänderte
@@ -87,9 +117,10 @@ bereits gespeicherte Erledigungstage und Zeitzonen bleiben unverändert.
 
 Kalenderregeln sind täglich, wöchentlich an einem ISO-Wochentag von 1 bis 7 oder
 monatlich an einem gewählten Tag. Fehlt dieser Monatstag, wird der letzte Tag des
-Monats verwendet. Eine Regel für den 31. fällt im Februar 2026 deshalb auf den 28. und im März wieder auf den 31. Vorlagen enthalten Titel, Bereich, Projekt,
-KI-Kennzeichnung und hohe Priorität. Subtasks gehören zur einzelnen Instanz und
-werden nicht als Wiederholungsvorlage kopiert.
+Monats verwendet. Eine Regel für den 31. fällt im Februar 2026 deshalb auf den 28. und im März wieder auf den 31. Vorlagen enthalten Titel, Liste,
+KI-Kennzeichnung und hohe Priorität. Eine Umbenennung der Instanz benennt auch
+die Vorlage um. Subtasks gehören zur einzelnen Instanz und werden nicht als
+Wiederholungsvorlage kopiert.
 
 Eine offene normale Wiederholung behält ihre ID und ursprüngliche Frist. Der
 neue Zeitraum wird trotzdem als verarbeitet gespeichert. Ein späterer Abschluss
@@ -101,12 +132,20 @@ alte Instanzen werden aus der Arbeitsansicht archiviert. Nur echte Abschlüsse
 erscheinen in der Historie. Ein verspäteter Abschluss einer alten offenen Instanz
 wird zurückgewiesen und kann den heutigen Habit nicht verändern. Pausierte
 Habit-Vorlagen erzeugen keine neuen Instanzen; beim Fortsetzen am selben Tag
-wird die noch offene Instanz wieder angezeigt.
+wird die noch offene Instanz wieder angezeigt. Jede neue Tagesinstanz startet
+an der `position` ihrer Vorlage. Sortieren in der Liste Habits schreibt diese
+Positionen, die Reihenfolge überdauert so den Tageswechsel. Die Punkte der
+Vortage liefert `recurrences.history` aus echten Erledigungen; für ältere
+Einträge ohne `recurrenceId` löst die Query die Vorlage über die archivierte
+Instanz auf.
 
 Die aktuelle Aufgabenliste liest den Index über Besitzer und fehlenden
-Archivierungszeitpunkt. Der Verlauf verwendet einen Index über Besitzer und
-lokalen Abschlusstag mit Convex-Pagination. API-Aufgabenlisten paginieren
-Haupttasks und liefern deren Kinder zusammen mit dem Parent.
+Archivierungszeitpunkt und filtert Liste und Abschnitt danach im Speicher.
+Einen eigenen Index je Liste gibt es nicht, der aktuelle Bestand eines
+Besitzers ist dafür zu klein. Listen liest ein Index über den Besitzer. Der
+Verlauf verwendet einen Index über Besitzer und lokalen Abschlusstag mit
+Convex-Pagination. API-Aufgabenlisten paginieren Haupttasks und liefern deren
+Kinder zusammen mit dem Parent.
 
 ## Diagnose
 

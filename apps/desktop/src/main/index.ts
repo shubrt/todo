@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   safeStorage,
   screen,
   shell,
@@ -28,8 +29,8 @@ import {
 } from "@todo/native-client";
 import type {
   CreatedIntegrationKey,
+  DesktopNavigation,
   DesktopPreferences,
-  DesktopView,
   PublicDesktopState,
 } from "../shared/contracts";
 import { ConnectionStore } from "./connection-store";
@@ -43,6 +44,7 @@ import {
 import {
   defaultPreferences,
   loadPreferences,
+  minimumSize,
   restoreBounds,
   validatePreferences,
   type Bounds,
@@ -103,6 +105,7 @@ else {
 function publicState(): PublicDesktopState {
   return {
     configured: connection !== null,
+    version: app.getVersion(),
     ...(variant ? { variant } : {}),
     ...(connection
       ? { siteUrl: connection.siteUrl, cloudUrl: cloudUrlFromSite(connection.siteUrl) }
@@ -160,29 +163,32 @@ async function start() {
   }
 
   if (process.platform === "darwin") app.dock?.hide();
+  // The window is always black; dark keeps the traffic lights and native menus matching.
+  nativeTheme.themeSource = "dark";
   const bounds = restoreBounds(
     savedBounds,
     screen.getAllDisplays().map((display) => display.workArea),
   );
   window = new BrowserWindow({
     ...bounds,
-    minWidth: 340,
-    minHeight: 360,
+    minWidth: minimumSize.width,
+    minHeight: minimumSize.height,
     maxWidth: 900,
     type: process.platform === "darwin" ? "panel" : undefined,
     title: appName,
-    frame: false,
-    roundedCorners: true,
+    // Native traffic lights inside the renderer's 40px title bar, which is the drag region.
+    // Only close stays enabled (it hides): without a Dock tile a minimized window is lost.
+    titleBarStyle: "hidden",
+    trafficLightPosition: { x: 14, y: 13 },
     resizable: true,
+    minimizable: false,
     maximizable: false,
     fullscreenable: false,
     show: false,
     alwaysOnTop: preferences.alwaysOnTop,
     skipTaskbar: true,
     acceptFirstMouse: true,
-    vibrancy: "under-window",
-    visualEffectState: "active",
-    backgroundColor: "#00000000",
+    backgroundColor: "#000000",
     webPreferences: {
       preload: join(directory, "preload.cjs"),
       contextIsolation: true,
@@ -380,6 +386,8 @@ function registerIpc() {
     }
   });
   handle("desktop:hide", () => window?.hide());
+  // The picked emoji is typed into the focused field of the window.
+  handle("desktop:emoji-panel", () => app.showEmojiPanel());
 }
 
 // Login and key creation errors shown in the window. NativeApiError messages are German and
@@ -409,50 +417,48 @@ function toggleWindow() {
   if (window?.isVisible() && window.isFocused()) window.hide();
   else showWindow();
 }
-function navigate(view: DesktopView) {
+function navigate(target: DesktopNavigation) {
   showWindow();
-  window?.webContents.send("desktop:navigate", view);
+  window?.webContents.send("desktop:navigate", target);
+}
+// Tray checkboxes flip a preference; the debounced save writes it with the bounds.
+function togglePreference(key: "alwaysOnTop" | "allSpaces") {
+  preferences = { ...preferences, [key]: !preferences[key] };
+  applyWindowPreferences();
+  queueWindowSave();
+  broadcast();
 }
 
 function updateMenu() {
   if (!tray) return;
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Aufgaben einblenden", accelerator: preferences.shortcut, click: showWindow },
-      { type: "separator" },
-      ...(["priority", "me", "agency", "work", "habits"] as const).map((view, index) => ({
-        label: view === "priority" ? "Priorität" : view === "habits" ? "Habits" : view,
-        accelerator: `CommandOrControl+${index + 1}`,
-        click: () => navigate(view),
-      })),
-      { label: "Wiederholungen", click: () => navigate("recurrences") },
+      { label: "Wichtig", click: () => navigate("important") },
       { label: "Verlauf", click: () => navigate("history") },
+      { label: "Wiederholungen", click: () => navigate("recurrences") },
+      { label: "Listen …", click: () => navigate("switcher") },
       { type: "separator" },
       {
         label: "Immer im Vordergrund",
         type: "checkbox",
         checked: preferences.alwaysOnTop,
-        click: () => {
-          preferences.alwaysOnTop = !preferences.alwaysOnTop;
-          applyWindowPreferences();
-          void persistWindow();
-          broadcast();
-        },
+        click: () => togglePreference("alwaysOnTop"),
       },
       {
         label: "Auf allen Schreibtischen",
         type: "checkbox",
         checked: preferences.allSpaces,
-        click: () => {
-          preferences.allSpaces = !preferences.allSpaces;
-          applyWindowPreferences();
-          void persistWindow();
-          broadcast();
-        },
+        click: () => togglePreference("allSpaces"),
       },
       { type: "separator" },
-      { label: "Ausblenden", click: () => window?.hide() },
-      { label: `${appName} beenden`, accelerator: "CommandOrControl+Q", click: () => app.quit() },
+      // The dock icon is hidden, so this menu is the only native way into the settings.
+      {
+        label: "Einstellungen …",
+        accelerator: "CommandOrControl+,",
+        click: () => navigate("settings"),
+      },
+      { label: "Fenster ausblenden", click: () => window?.hide() },
+      { label: "Beenden", accelerator: "CommandOrControl+Q", click: () => app.quit() },
     ]),
   );
   Menu.setApplicationMenu(

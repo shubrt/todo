@@ -10,9 +10,9 @@ import {
   desktopCallbackLocation,
   errorResponse,
   jsonResponse,
-  parseFilters,
   readJson,
   routeCommand,
+  routeRead,
 } from "./httpHelpers";
 
 const http = httpRouter();
@@ -120,36 +120,18 @@ const apiHandler = httpAction(async (ctx, request) => {
     const tokenHash = await sha256(applicationKey(request));
     const url = new URL(request.url);
     let data: unknown;
-    if (request.method === "GET") {
-      if (url.pathname === "/api/v1/habits/snapshot") {
-        if (url.search)
-          throw new ConvexError({
-            code: "INVALID_INPUT",
-            message: "Der Habit-Stand benötigt keine Filter.",
-          });
-        data = await ctx.runMutation(internal.apiCommands.habitSnapshot, { tokenHash });
-      } else if (url.pathname === "/api/v1/completions")
-        data = await ctx.runQuery(internal.apiCommands.read, {
-          tokenHash,
-          resource: "completions",
-          filters: parseFilters(url, true),
+    if (request.method === "GET" && url.pathname === "/api/v1/habits/snapshot") {
+      if (url.search)
+        throw new ConvexError({
+          code: "INVALID_INPUT",
+          message: "Der Habit-Stand benötigt keine Filter.",
         });
-      else if (url.pathname === "/api/v1/tasks")
-        data = await ctx.runQuery(internal.apiCommands.read, {
-          tokenHash,
-          resource: "tasks",
-          filters: parseFilters(url),
-        });
-      else {
-        const matchId = url.pathname.match(/^\/api\/v1\/tasks\/([^/]+)$/);
-        if (!matchId?.[1]) throw new ConvexError({ code: "NOT_FOUND", message: "Nicht gefunden." });
-        data = await ctx.runQuery(internal.apiCommands.read, {
-          tokenHash,
-          resource: "task",
-          taskId: matchId[1],
-          filters: {},
-        });
-      }
+      data = await ctx.runMutation(internal.apiCommands.habitSnapshot, { tokenHash });
+    } else if (request.method === "GET") {
+      const read = routeRead(url);
+      // Queries cannot write, so seed the owner's lists and migrate legacy data first.
+      await ctx.runMutation(internal.lists.ensureOwnerInternal, { tokenHash });
+      data = await ctx.runQuery(internal.apiCommands.read, { tokenHash, ...read });
     } else {
       const idempotencyKey = request.headers.get("idempotency-key");
       if (!idempotencyKey)
@@ -158,7 +140,7 @@ const apiHandler = httpAction(async (ctx, request) => {
           message: "Idempotency-Key ist für Schreibbefehle erforderlich.",
         });
       const body = request.body ? await readJson(request) : {};
-      const command = routeCommand(request.method, url.pathname, body);
+      const command = routeCommand(request.method, url, body);
       const payloadHash = await sha256(canonicalJson(command));
       data = await ctx.runMutation(internal.apiCommands.write, {
         tokenHash,
@@ -196,6 +178,7 @@ for (const method of ["GET", "POST", "PATCH", "DELETE"] as const) {
   http.route({ path: "/api/v1/tasks", method, handler: apiHandler });
   http.route({ pathPrefix: "/api/v1/tasks/", method, handler: apiHandler });
 }
+http.route({ path: "/api/v1/lists", method: "GET", handler: apiHandler });
 http.route({ path: "/api/v1/completions", method: "GET", handler: apiHandler });
 http.route({ path: "/api/v1/habits/snapshot", method: "GET", handler: apiHandler });
 

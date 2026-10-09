@@ -108,7 +108,7 @@ export const revokeApiKey = mutation({
     if (id === caller._id)
       authError(
         "INVALID_INPUT",
-        'Das ist der Schlüssel dieser App. Zum Abmelden "Verbindung entfernen" wählen.',
+        "Das ist der Schlüssel dieser App. Melde dich dafür in den Einstellungen ab.",
       );
     const key = await ctx.db.get(id);
     if (!key || key.ownerId !== caller.ownerId)
@@ -170,7 +170,7 @@ export const insertApiKey = internalMutation({
   },
 });
 
-/** Revokes the presenting key ("Verbindung entfernen"); a second call fails like any revoked key. */
+/** Revokes the presenting key (Abmelden); a second call fails like any revoked key. */
 export const revokeDeviceKey = internalMutation({
   args: { tokenHash: v.string() },
   handler: async (ctx, { tokenHash }) => {

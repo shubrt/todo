@@ -16,7 +16,8 @@ const url = server.resolvedUrls.local[0];
 console.log(`Desktop-Variante: todo ${variant}`);
 const environment = { ...process.env, TODO_DESKTOP_DEV_URL: url };
 delete environment.ELECTRON_RUN_AS_NODE;
-const child = spawn(electron, [join(desktopDirectory, "dist/main.mjs")], {
+// Start the package directory, not dist/main.mjs, so app.getVersion() reads package.json.
+const child = spawn(electron, [desktopDirectory], {
   stdio: "inherit",
   env: environment,
 });

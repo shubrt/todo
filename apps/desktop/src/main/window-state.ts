@@ -6,19 +6,30 @@ export const defaultPreferences: DesktopPreferences = {
   allSpaces: true,
   launchAtLogin: false,
   shortcut: "CommandOrControl+Shift+Space",
-  tint: "graphite",
 };
+/** Smallest window size, shared by the BrowserWindow limits and `restoreBounds`. */
+export const minimumSize = { width: 340, height: 360 };
 
+/**
+ * Brings saved bounds back onto a connected display: default 410x600, at least `minimumSize`,
+ * at most the display. Without a usable position the window goes to the top right.
+ */
 export function restoreBounds(saved: unknown, displays: Bounds[]): Bounds {
   const fallback = displays[0] ?? { x: 0, y: 0, width: 1440, height: 900 };
   const candidate = saved && typeof saved === "object" ? (saved as Partial<Bounds>) : {};
   const finite = (value: unknown): value is number =>
     typeof value === "number" && Number.isFinite(value);
   const width = Math.round(
-    Math.min(Math.max(finite(candidate.width) ? candidate.width : 410, 340), fallback.width),
+    Math.min(
+      Math.max(finite(candidate.width) ? candidate.width : 410, minimumSize.width),
+      fallback.width,
+    ),
   );
   const height = Math.round(
-    Math.min(Math.max(finite(candidate.height) ? candidate.height : 600, 360), fallback.height),
+    Math.min(
+      Math.max(finite(candidate.height) ? candidate.height : 600, minimumSize.height),
+      fallback.height,
+    ),
   );
   if (finite(candidate.x) && finite(candidate.y)) {
     const display = displays.find(
@@ -54,39 +65,46 @@ export function restoreBounds(saved: unknown, displays: Bounds[]): Bounds {
   };
 }
 
+/** An Electron accelerator: one or more modifiers, then one key, e.g. "CommandOrControl+Shift+Space". */
+const acceleratorPattern =
+  /^(?:(?:CommandOrControl|Command|Control|Ctrl|Alt|Option|Shift|Super)\+)+(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Space|Tab|Return|Enter|Escape|Up|Down|Left|Right)$/i;
+
+/**
+ * Validates a preferences patch from the renderer. Unknown keys, wrong types and shortcuts
+ * without a modifier other than Shift throw.
+ */
 export function validatePreferences(patch: unknown): Partial<DesktopPreferences> {
   if (!patch || typeof patch !== "object" || Array.isArray(patch))
     throw new Error("Ungültige Fenstereinstellung.");
-  const allowed = new Set(["alwaysOnTop", "allSpaces", "launchAtLogin", "shortcut", "tint"]);
   const result: Partial<DesktopPreferences> = {};
   for (const [key, value] of Object.entries(patch)) {
-    if (!allowed.has(key)) throw new Error("Unbekannte Fenstereinstellung.");
     if (key === "shortcut") {
-      if (
-        typeof value !== "string" ||
-        value.length > 80 ||
-        !/^(?:(?:CommandOrControl|Command|Control|Ctrl|Alt|Option|Shift|Super)\+)+(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Space|Tab|Return|Enter|Escape|Up|Down|Left|Right)$/i.test(
-          value,
-        )
-      )
+      if (typeof value !== "string" || value.length > 80 || !acceleratorPattern.test(value))
         throw new Error("Nutze beispielsweise CommandOrControl+Shift+Space.");
+      // Shift alone is no modifier for a global shortcut: Shift+A would take capital A from
+      // every app.
+      if (/^(?:Shift\+)+[^+]+$/i.test(value))
+        throw new Error("Ein Kurzbefehl braucht ⌘, ⌃ oder ⌥. ⇧ allein reicht nicht.");
       result.shortcut = value;
-    } else if (key === "tint") {
-      if (value !== "graphite" && value !== "plum" && value !== "forest")
-        throw new Error("Ungültige Fensterfarbe.");
-      result.tint = value;
-    } else {
+    } else if (key === "alwaysOnTop" || key === "allSpaces" || key === "launchAtLogin") {
       if (typeof value !== "boolean")
         throw new Error("Diese Einstellung muss ein Wahrheitswert sein.");
-      result[key as "alwaysOnTop" | "allSpaces" | "launchAtLogin"] = value;
-    }
+      result[key] = value;
+    } else throw new Error("Unbekannte Fenstereinstellung.");
   }
   return result;
 }
 
+/**
+ * Preferences saved in window.json. Keys this version no longer knows (e.g. the removed `tint`)
+ * are dropped so an update keeps the other preferences. An invalid value means a damaged file
+ * and falls back to the defaults.
+ */
 export function loadPreferences(saved: unknown): DesktopPreferences {
+  if (!saved || typeof saved !== "object") return { ...defaultPreferences };
+  const known = Object.entries(saved).filter(([key]) => Object.hasOwn(defaultPreferences, key));
   try {
-    return { ...defaultPreferences, ...validatePreferences(saved) };
+    return { ...defaultPreferences, ...validatePreferences(Object.fromEntries(known)) };
   } catch {
     return { ...defaultPreferences };
   }

@@ -18,29 +18,35 @@ Lies für konkrete Requests [den API-Vertrag](../../docs/api.md). Er gilt auch
 für Größenlimits, Antwortformate und Fehler. Zugangsdaten fehlen zu lassen
 ist kein Anlass, sie in Projektdateien oder Shell-Historien zu suchen.
 
-1. Lies den relevanten Bestand über `GET /tasks?view=all`, gegebenenfalls mit
-   `area`, `search` und weiteren Seiten über `nextCursor`. Prüfe auch Projekt-
+1. Lies die Listen über `GET /lists`. Aufgaben gehören nur in Listen mit
+   `kind` `tasks`. Name und Emoji zeigen, wofür eine Liste steht.
+2. Lies den relevanten Bestand über `GET /tasks?view=all`, gegebenenfalls mit
+   `listId`, `search` und weiteren Seiten über `nextCursor`. Prüfe auch Listen-
    und Parent-Kontext. Eine einzelne exakte Titelsuche findet nicht alle
    inhaltlichen Überschneidungen.
-2. Formuliere verständliche Aufträge. Nutze `me`, `agency` oder `work`, soweit
-   aus dem Gespräch bekannt. Unbekannte Zuordnungen nicht aus einem
-   Repository-Organisationsnamen erfinden. Ohne Bereich greift der Standard.
-   Bei agency und work bekannten Projektkontext angeben.
-3. Verwende Subtasks für getrennte Arbeitsstränge, höchstens zwei Ebenen.
+3. Formuliere verständliche Aufträge. Wähle die Liste über ihren Namen, wenn
+   das Gespräch sie nennt oder der Inhalt eindeutig zu ihr passt, und sende
+   ihre `id` als `listId`. Eine Zuordnung nicht aus einem
+   Repository-Organisationsnamen erfinden. Gibt es keine passende Liste, ohne
+   `listId` erfassen; dann greift die Standardliste. Das in der Rückmeldung
+   nennen. Projektnamen gibt es nicht, ein Projekt ist eine eigene Liste. Die
+   veralteten Felder `area` und `projectName` nicht senden.
+4. Verwende Subtasks für getrennte Arbeitsstränge, höchstens zwei Ebenen.
    Ein großer zusammenhängender Auftrag darf ein Task bleiben. Schreibe keine
    Implementierungspläne, Architekturabschnitte oder technischen Checklisten
    in Aufgabentexte. Subtasks haben keine eigene hohe Priorität.
-4. Bei möglicher Dublette ausdrücklich fragen, ob dieselbe Aufgabe gemeint
+5. Bei möglicher Dublette ausdrücklich fragen, ob dieselbe Aufgabe gemeint
    ist oder worin der Unterschied besteht. Bis zur Antwort weder die
    betroffene Dublette anlegen noch bestehende Aufgaben zusammenführen.
-5. Neue Einträge mit Inbox-Markierung anlegen und `isAi` passend setzen.
+6. Neue Einträge mit Inbox-Markierung anlegen und `isAi` passend setzen.
    Technische Idempotenzschlüssel sind von inhaltlicher Ähnlichkeit getrennt.
    Pro logischem Schreibbefehl eine neue UUID erzeugen und sie für dessen
    identische Retries aufbewahren. Nach `CONFLICT` den Bestand prüfen,
    statt den Fehler mit einer neuen UUID zu umgehen.
-6. Nur vom Server bestätigte Änderungen zurückmelden. Bei Netzfehlern nicht
+7. Nur vom Server bestätigte Änderungen zurückmelden. Bei Netzfehlern nicht
    behaupten, eine Aufgabe sei gespeichert. Erledigungen nur auf ausdrücklichen
-   Wunsch setzen; ein gestarteter KI-Thread ist keine Erledigung.
+   Wunsch setzen; ein gestarteter KI-Thread ist keine Erledigung. Eine
+   irrtümliche Erledigung nimmt `POST /tasks/:id/reopen` am selben Tag zurück.
 
 Inbox entfernen verändert nur die Markierung. Verwerfen erzeugt keine
 Erledigung. Entwicklungsaufgaben gelten für diesen Nutzer nach Merge,
