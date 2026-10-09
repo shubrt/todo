@@ -20,6 +20,7 @@
     "dev": "vp run @todo/desktop#dev",
     "build": "vp run @todo/desktop#build",
     "package": "vp run @todo/desktop#package",
+    "install:mac": "node scripts/install-mac.mjs",
     "codegen": "vp run @todo/backend#codegen",
     "keys:generate": "node scripts/generate-auth-keys.mjs"
   },

@@ -45,6 +45,10 @@ vp run package
 Verhaltenstests. Die Tests verwenden keine persönlichen Cloud-Daten. `package`
 legt die unsignierte macOS-App unter `apps/desktop/release/` ab.
 
+`vp run install:mac` baut und prüft den aktuellen Stand von `main` und
+installiert ihn als `/Applications/todo.app`,
+siehe [Desktop](docs/desktop.md#auf-diesem-mac-installieren-und-aktualisieren).
+
 ## Dokumentation
 
 - [Produktregeln und dokumentierte Entscheidungen](docs/product-concept.md)
