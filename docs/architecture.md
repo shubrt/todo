@@ -88,7 +88,7 @@ Queries können nichts anlegen. Deshalb ruft die App nach der Anmeldung
 `lists.bootstrap` auf, und die HTTP-API führt vor jedem Lesezugriff
 `ensureOwner` als Mutation aus. `ensureOwner` legt fehlende Startlisten an und
 stellt Daten aus der Zeit der festen Bereiche einmal je Besitzer um. Jeder
-Schreibbefehl und der Minutencron rufen es ebenfalls auf. Einzelheiten zur
+Schreibbefehl und der stündliche Cron rufen es ebenfalls auf. Einzelheiten zur
 Umstellung stehen in [Entwicklung](development.md#umstellung-auf-listen).
 
 ## Aufgaben, Historie und Zeit
@@ -109,7 +109,9 @@ Termine nicht überschreiben. Queries verwenden gespeicherte Zeitstände für
 reaktive Tagesansichten. Lokale Kalendertage werden anhand der IANA-Zeitzone
 berechnet, Tagesgrenzen anhand des Kalenders statt mit einer festen 24-Stunden-Dauer.
 
-Der Cron prüft jede Minute die lokalen Tagesgrenzen, auch ohne geöffnete Clients.
+Der Cron prüft zu jeder vollen UTC-Stunde die lokalen Tagesgrenzen, auch ohne
+geöffnete Clients. In Zeitzonen mit ganzen Stunden wie Europe/Berlin fällt
+Mitternacht immer auf eine volle UTC-Stunde, der Tageswechsel kommt also pünktlich.
 Konkrete Wiedervorlagen werden zusätzlich mit `runAt` geplant. Der einmalige
 Positionswechsel bleibt gespeichert und wird bei späteren Cronläufen nicht
 wiederholt. Ein Zeitzonenwechsel berechnet noch geplante Aktivierungen neu;

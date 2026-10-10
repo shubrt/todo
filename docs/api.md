@@ -159,7 +159,7 @@ prüft zusätzlich die erwartete Kalenderperiode. Ein bereits bestätigter
 Abschluss erzeugt auch bei Wiederholung kein zweites Erledigungsereignis.
 
 `GET /habits/snapshot` verarbeitet einen fälligen Tageswechsel vor dem Lesen,
-auch wenn der Minutencron noch nicht gelaufen ist. `data` enthält
+auch wenn der stündliche Cron noch nicht gelaufen ist. `data` enthält
 `generatedAt`, `localDate`, `timeZone`, `nextResetAt`, `completedCount`,
 `totalCount` und `habits` mit den heutigen Einträgen der Liste Habits, jeweils
 mit `id`, `title`, `completed` und `occurrenceKey`. `nextResetAt`
