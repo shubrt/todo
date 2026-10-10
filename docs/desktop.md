@@ -21,7 +21,23 @@ Der Paketbefehl erstellt:
 - `apps/desktop/release/todo-darwin-arm64/todo.app`
 - `apps/desktop/release/todo-0.2.0-mac-arm64.zip`
 
-Das Paket wird lokal gebaut und weder installiert noch hochgeladen. Es hat keine Developer-ID-Signatur und keine Apple-Notarisierung. Für eine spätere Verteilung fehlt dieser Schritt mit einem passenden Apple-Zertifikat. Eine gleichbleibende Signatur erspart außerdem Schlüsselbund-Rückfragen nach Updates. Buildwerkzeuge und Electron-Version stehen fest im Paketmanifest. Wegen der ZIP-Zeitstempel sind zwei Builds trotzdem nicht byteidentisch.
+Das Paket wird lokal gebaut und weder installiert noch hochgeladen. Es hat keine Developer-ID-Signatur und keine Apple-Notarisierung. Für eine Verteilung an andere Macs fehlt dieser Schritt mit einem passenden Apple-Zertifikat.
+
+### Auf diesem Mac installieren und aktualisieren
+
+```bash
+vp run install:mac
+```
+
+Der Befehl installiert den aktuellen Stand von `main` als `/Applications/todo.app`. Er läuft aus jedem Checkout des Repositorys, braucht dort aber eine `.env` mit `CONVEX_SITE_URL`. Die Schritte:
+
+1. Er holt `origin/main` und legt dafür einen temporären Worktree an. Die eigenen Checkouts bleiben unberührt.
+2. Er führt dort `vp install`, `vp run qa` und `vp run package` aus.
+3. Erst wenn alles geklappt hat, beendet er ein laufendes todo, ersetzt die App und startet die neue Version. Scheitert ein Schritt davor, bleibt die installierte App unverändert. Läuft die neue Version fünf Sekunden nach dem Start nicht, kommt die bisherige zurück.
+
+Zwei Läufe gleichzeitig verhindert eine Sperre. Automatische Updates gibt es nicht. Nach jedem Merge nach `main` reicht ein erneuter Aufruf.
+
+Die App bekommt keine eigene Signatur. Ihr Hauptprogramm ist die unveränderte, ad hoc signierte Electron-Binärdatei. macOS erkennt Apps ohne Apple-Zertifikat für den Schlüsselbund an deren Hash, und der ändert sich nur mit der Electron-Version. Nach einem Update fragt der Schlüsselbund deshalb nicht erneut nach dem Zugriff auf "todo Safe Storage", erst nach einem Wechsel der Electron-Version einmal. Ein selbst signiertes Zertifikat würde daran nichts verbessern, weil jede neue Signatur einen neuen Hash ergibt. Eine selbst gebaute App trägt keine Download-Markierung, Gatekeeper prüft sie deshalb nicht.
 
 ## Anmelden
 
