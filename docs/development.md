@@ -198,9 +198,9 @@ passen damit ohne Vorarbeit, der Deploy läuft wie jeder andere über
 `node scripts/convex.mjs deploy --typecheck enable`.
 
 Nach dem Deploy stellt `ensureOwner` in `libs/backend/convex/domain.ts` jeden
-Besitzer einmal um. Der Minutencron ruft es für alle Besitzer auf, außerdem
+Besitzer einmal um. Der stündliche Cron ruft es für alle Besitzer auf, außerdem
 jeder Schreibbefehl, `lists.bootstrap` beim Start der App und jeder lesende
-Aufruf der HTTP-API. Spätestens eine Minute nach dem Deploy ist die Umstellung
+Aufruf der HTTP-API. Spätestens eine Stunde nach dem Deploy ist die Umstellung
 deshalb erledigt, auch ohne geöffnete App. Sie läuft in einer einzigen
 Transaktion:
 
