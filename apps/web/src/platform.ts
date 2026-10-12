@@ -181,10 +181,13 @@ export function createWebPlatform({
       if (!tokenProvider) return null;
       try {
         const token = await tokenProvider(options);
-        stateError = token
-          ? undefined
-          : "Der Geräteschlüssel ist abgelaufen oder wurde widerrufen. Melde dich erneut an.";
-        if (!token) emit();
+        if (token) stateError = undefined;
+        else {
+          // Keep a failed re-login's reason (set by exchange) over the generic text.
+          stateError ??=
+            "Der Geräteschlüssel ist abgelaufen oder wurde widerrufen. Melde dich erneut an.";
+          emit();
+        }
         return token;
       } catch {
         throw new PlatformError(

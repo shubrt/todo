@@ -100,6 +100,22 @@ describe("Web-Plattform", () => {
     );
   });
 
+  it("behält den Grund einer gescheiterten Neuanmeldung, wenn der alte Schlüssel abgelehnt wird", async () => {
+    store(oldKey);
+    backend({
+      "/auth/desktop-login": () => [
+        403,
+        { error: { code: "FORBIDDEN", message: "Dieses Shoo-Konto ist nicht freigegeben." } },
+      ],
+      "/auth/device-token": () => [401, {}],
+    });
+    const platform = create({ proof });
+    expect((await platform.getState()).error).toBe("Dieses Shoo-Konto ist nicht freigegeben.");
+
+    expect(await platform.fetchAccessToken({ forceRefreshToken: false })).toBeNull();
+    expect((await platform.getState()).error).toBe("Dieses Shoo-Konto ist nicht freigegeben.");
+  });
+
   it("vergisst die Verbindung beim Abmelden auch offline", async () => {
     store(oldKey);
     localStorage.setItem("todo.sections", "{}");
