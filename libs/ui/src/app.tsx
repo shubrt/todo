@@ -1,5 +1,5 @@
 import { useConvexAuth } from "convex/react";
-import { Settings2 } from "lucide-react";
+import { ChevronDown, Plus, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   favoritesOf,
@@ -12,7 +12,7 @@ import {
   type List,
   type SyncStatus,
 } from "./data";
-import { useGlobalKeys, useWorkspaceKeys } from "./keymap";
+import { startNewTask, useGlobalKeys, useWorkspaceKeys } from "./keymap";
 import { LoadFailedView, LoginView, OfflineView, PlatformErrorView } from "./login";
 import { PanelHost } from "./panels";
 import { ConnectedProvider, PlatformProvider, usePlatform, useTokenRejected } from "./connection";
@@ -20,6 +20,8 @@ import type { Platform } from "./platform";
 import { selectedTask, useApp } from "./store";
 import { TaskActionsProvider, useTaskActions } from "./task-actions";
 import { Toast } from "./toast";
+import { isTouch, longPress } from "./touch";
+import { useTouchLayer } from "./touch-layer";
 import { cx, ListMark } from "./ui";
 import { HabitsView } from "./views/habits";
 import { HistoryView } from "./views/history";
@@ -46,7 +48,9 @@ function AppFrame() {
   const [retry, setRetry] = useState(0);
   const [connecting, setConnecting] = useState(false);
   const reconnect = () => setRetry((value) => value + 1);
+  const app = useRef<HTMLDivElement>(null);
   useGlobalKeys();
+  useTouchLayer(app);
   let content: ReactNode;
   if (error)
     content = (
@@ -73,7 +77,7 @@ function AppFrame() {
       </ConnectedProvider>
     );
   return (
-    <div className="app">
+    <div className="app" ref={app}>
       {content}
       <Toast />
     </div>
@@ -82,7 +86,8 @@ function AppFrame() {
 
 /**
  * Title bar (drag region; room on the left for the native traffic lights), sidebar and
- * content. `account` lets the panel host open Convex-backed panels.
+ * content. `account` lets the panel host open Convex-backed panels; on touch a tap on the
+ * title then opens the list switcher, which ⌘P opens on the Mac.
  */
 function Frame({
   title,
@@ -98,12 +103,19 @@ function Frame({
   children?: ReactNode;
 }) {
   const variant = usePlatform().state?.variant;
+  const switcher = account && Boolean(title) && isTouch();
   return (
     <>
       <header className="tb">
-        <span className="ttl">
+        <span
+          className="ttl"
+          role={switcher ? "button" : undefined}
+          aria-label={switcher ? "Liste wechseln" : undefined}
+          onClick={switcher ? () => useApp.getState().openPanel({ type: "switcher" }) : undefined}
+        >
           {title}
           {variant && <span className="variant">{variant}</span>}
+          {switcher && <ChevronDown size={12} />}
         </span>
         {status}
       </header>
@@ -116,12 +128,26 @@ function Frame({
   );
 }
 
-/** Sync dot with its tooltip; `force` overrides the live status (e.g. offline while signed out). */
+/**
+ * Sync dot with its tooltip (on touch, a tap shows it for 2 s); `force` overrides the live
+ * status (e.g. offline while signed out).
+ */
 function StatusDot({ force }: { force?: SyncStatus }) {
   const live = useSyncStatus();
   const status = force ?? live;
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!shown) return;
+    const timer = setTimeout(() => setShown(false), 2000);
+    return () => clearTimeout(timer);
+  }, [shown]);
   return (
-    <span className={cx("st", status)} role="status" aria-label={syncLabels[status]}>
+    <span
+      className={cx("st", status, shown && "show")}
+      role="status"
+      aria-label={syncLabels[status]}
+      onClick={isTouch() ? () => setShown(true) : undefined}
+    >
       <i />
       <span className="sttip">{syncLabels[status]}</span>
     </span>
@@ -164,6 +190,7 @@ function Authenticated({ reconnect, login }: { reconnect: () => void; login: () 
 function Workspace() {
   const lists = useLists();
   const settings = useSettings();
+  const actions = useTaskActions();
   const current = useApp((state) => state.current);
   const list = lists && resolveList(lists, current);
   useWorkspaceKeys({ lists, list, settings });
@@ -179,7 +206,15 @@ function Workspace() {
         )
       }
       status={<StatusDot />}
-      sidebar={lists && <Sidebar lists={lists} current={list} />}
+      sidebar={
+        lists && (
+          <Sidebar
+            lists={lists}
+            current={list}
+            onNew={isTouch() ? () => startNewTask({ lists, list, settings, actions }) : undefined}
+          />
+        )
+      }
       account
     >
       {list && (
@@ -223,7 +258,7 @@ function useInboxClear() {
 
 /**
  * Places the hovered item's tooltip next to it. Tooltips are fixed, so the scrolling favorites
- * do not clip them.
+ * do not clip them. Mac only: touch has no tooltips, and iOS sends a mouseenter before a tap.
  */
 function placeTip(event: MouseEvent<HTMLElement>) {
   const rect = event.currentTarget.getBoundingClientRect();
@@ -233,10 +268,18 @@ function placeTip(event: MouseEvent<HTMLElement>) {
 
 /**
  * Favorites in order (⌘1..⌘9), the open list below a line when it is not a favorite, and the
- * settings button at the bottom. The lists scroll when the window is too short for them; the
- * settings button always stays visible.
+ * settings button at the bottom, with `onNew` ("+", touch only) above it. The lists scroll when
+ * the window is too short for them; the buttons at the bottom always stay visible.
  */
-function Sidebar({ lists, current }: { lists: List[]; current: List | undefined }) {
+function Sidebar({
+  lists,
+  current,
+  onNew,
+}: {
+  lists: List[];
+  current: List | undefined;
+  onNew?: () => void;
+}) {
   // Also while one of its pickers (Zeitzone, Standardliste, …) is on top.
   const settingsOpen = useApp((state) => state.panels.some((panel) => panel.type === "settings"));
   return (
@@ -258,11 +301,22 @@ function Sidebar({ lists, current }: { lists: List[]; current: List | undefined 
         )}
       </div>
       <span className="grow" />
+      {onNew && (
+        <button
+          className="ri sm"
+          aria-label="Neue Aufgabe"
+          tabIndex={-1}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onNew}
+        >
+          <Plus size={15} />
+        </button>
+      )}
       <button
         className={cx("ri", "sm", settingsOpen && "on")}
         aria-label="Einstellungen"
         tabIndex={-1}
-        onMouseEnter={placeTip}
+        onMouseEnter={isTouch() ? undefined : placeTip}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
           const state = useApp.getState();
@@ -279,6 +333,7 @@ function Sidebar({ lists, current }: { lists: List[]; current: List | undefined 
   );
 }
 
+/** A list in the rail: a tap opens it; on touch a long press opens its actions instead. */
 function SidebarItem({
   list,
   active,
@@ -299,8 +354,13 @@ function SidebarItem({
       aria-label={list.name}
       aria-current={active}
       tabIndex={-1}
-      onMouseEnter={placeTip}
+      onMouseEnter={isTouch() ? undefined : placeTip}
       onMouseDown={(event) => event.preventDefault()}
+      onPointerDown={longPress(() => {
+        // In place of any open panel, in one change: the history stays one entry deep.
+        useApp.setState({ panels: [{ type: "listActions", listId: list._id }] });
+        return true;
+      })}
       onClick={() => useApp.getState().open({ id: list._id })}
     >
       <ListMark list={list} />

@@ -8,10 +8,12 @@
   z-index: 20;
   -webkit-app-region: no-drag;
 }
+/* --pal-w is the Panel's `width` prop. */
 .pal {
   position: absolute;
   top: 46px;
   left: 50%;
+  width: var(--pal-w);
   max-width: calc(100% - 16px);
   max-height: calc(100% - 54px);
   transform: translateX(-50%);
@@ -211,4 +213,55 @@
 }
 .pal.set .sep {
   margin: 4px;
+}
+
+/* Touch: a sheet at the bottom, above the home indicator and the keyboard (touch-layer.ts), with
+   44pt rows and no keycaps. */
+@media (pointer: coarse) {
+  .pal {
+    top: auto;
+    bottom: calc(8px + var(--safe-b));
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
+    width: auto;
+    max-width: none;
+    /* The title bar stays visible above it. */
+    max-height: calc(100% - env(safe-area-inset-top) - 56px - var(--safe-b));
+    transform: none;
+  }
+  .pal .pi,
+  .pal.set .pi,
+  .pal .pe {
+    height: 44px;
+  }
+  .pal .keys {
+    display: none;
+  }
+  /* What the sheet acts on, in place of the search field (Panel `header`). */
+  .pal .q .hd {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+    color: #fff;
+  }
+  /* Datum wählen: the transparent native picker covers the row and takes the tap. */
+  .pal .pi {
+    position: relative;
+  }
+  .pal .pi .pick {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    font-size: 16px;
+  }
+  .pal .pl {
+    touch-action: manipulation;
+    overscroll-behavior: contain;
+  }
+  .pal .secret {
+    -webkit-user-select: text;
+  }
 }

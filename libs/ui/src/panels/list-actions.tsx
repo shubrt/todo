@@ -147,7 +147,14 @@ export function ListActionsPanel({ listId }: { listId: Id<"lists"> }) {
   const { list } = useList(listId);
   const actionsOf = useListActions();
   if (!list) return null;
-  return <Panel crumb={list.name} placeholder="Aktion suchen …" sections={actionsOf(list)} />;
+  return (
+    <Panel
+      crumb={list.name}
+      header={list.name}
+      placeholder="Aktion suchen …"
+      sections={actionsOf(list)}
+    />
+  );
 }
 
 /** Umbenennen: the search field holds the name, ↵ saves it. */

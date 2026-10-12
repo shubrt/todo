@@ -3,9 +3,11 @@ import { Calendar, Check, ChevronDown, ChevronRight, Clock, Flag, Repeat } from 
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { Day, Task } from "./data";
 import { dayLabel, snoozeLabel } from "./dates";
+import { rowDrag } from "./drag";
 import { comboOf } from "./keymap";
 import { sameEdit, useApp, type Selectable } from "./store";
 import { useTaskActions, type CreateTarget } from "./task-actions";
+import { isTouch } from "./touch";
 import { cx } from "./ui";
 
 /** Publishes the open view's selectable rows (in display order) for the keymap. */
@@ -160,18 +162,42 @@ export function TaskTree({
   });
 }
 
+/** Whether the event hit a control inside the row: the title field, checkbox or 0/5. */
+const onControl = (event: MouseEvent) =>
+  event.target instanceof Element && Boolean(event.target.closest("input, button"));
+
 /**
  * A double click on the row itself starts a rename; one inside the title field (selecting a
  * word) or on the checkbox and other buttons is theirs.
  */
 export function startsRename(event: MouseEvent, editing: boolean) {
-  return !editing && !(event.target instanceof Element && event.target.closest("input, button"));
+  return !editing && !onControl(event);
+}
+
+/**
+ * Touch: a tap on the row selects it and opens its actions sheet through `openActions`. Taps
+ * on its controls stay theirs, and a tap that only ended an edit (the field's blur saves)
+ * opens nothing. Returns the row's pointer-down and click handlers.
+ */
+export function useRowTap(id: string, openActions: () => void) {
+  const editingAtDown = useRef(false);
+  return {
+    onPointerDown: () => {
+      editingAtDown.current = Boolean(useApp.getState().editing);
+    },
+    onClick: (event: MouseEvent) => {
+      if (!isTouch() || editingAtDown.current || onControl(event)) return;
+      useApp.getState().select(id);
+      openActions();
+    },
+  };
 }
 
 /**
  * One task: checkbox in the list color, title, details in fixed order (⚡️, subtasks, ↻, due,
  * planned, snooze, ‼️) and optional habit dots. Click selects, double click renames, right
- * click opens ⌘K. Done rows show no details.
+ * click opens ⌘K; on touch a tap opens ⌘K as a sheet and a long press drags the row (drag.ts,
+ * which finds it by `data-task`). Done rows show no details.
  */
 export function TaskRow({
   task,
@@ -196,6 +222,9 @@ export function TaskRow({
   const actions = useTaskActions();
   const done = task.state === "done";
   const select = () => useApp.getState().select(task._id);
+  const openActions = () => useApp.getState().openPanel({ type: "actions", taskId: task._id });
+  const tap = useRowTap(task._id, openActions);
+  const drag = rowDrag(task._id, actions);
   return (
     <div
       ref={ref}
@@ -203,16 +232,24 @@ export function TaskRow({
       style={{ "--acc": color }}
       role="option"
       aria-selected={selected}
+      data-task={task._id}
       onMouseDown={(event) => {
         if (event.button === 0) select();
       }}
+      onPointerDown={(event) => {
+        tap.onPointerDown();
+        drag(event);
+      }}
+      onClick={tap.onClick}
       onDoubleClick={(event) => {
         if (startsRename(event, editing)) actions.rename(task._id);
       }}
       onContextMenu={(event) => {
         event.preventDefault();
+        // A long press on touch can fire this too; it drags there, and a tap opens the sheet.
+        if (isTouch()) return;
         select();
-        useApp.getState().openPanel({ type: "actions", taskId: task._id });
+        openActions();
       }}
     >
       {task.isInbox && !seen && <i className="inb" />}
@@ -412,6 +449,8 @@ export function TitleInput({
       aria-label={placeholder ?? "Titel"}
       maxLength={500}
       spellCheck={false}
+      // iOS labels the return key "Fertig"; it ends the edit like ↵.
+      enterKeyHint="done"
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => {
         if (document.hasFocus()) void save();
@@ -430,7 +469,10 @@ export function TitleInput({
   );
 }
 
-/** "Nichts offen. ⌘N legt eine Aufgabe an." under an empty Tasks section. */
+/**
+ * "Nichts offen. ⌘N legt eine Aufgabe an." under an empty Tasks section. Keyboard hints go in a
+ * `.kh` span, which touch hides.
+ */
 export function EmptyLine({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }

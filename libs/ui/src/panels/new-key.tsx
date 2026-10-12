@@ -128,6 +128,7 @@ export function NewKeyPanel() {
     <Panel
       crumb="Neuer Schlüssel"
       placeholder="Name, z. B. task-capture"
+      typing
       // The name stays visible while waiting and afterwards, but only the first step edits it.
       query={name}
       onQueryChange={(next) => {

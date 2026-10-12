@@ -12,6 +12,7 @@ import {
 } from "react";
 import { comboOf, hasModifier, matches } from "../keymap";
 import { useApp } from "../store";
+import { isTouch, longPress } from "../touch";
 import { cx, Keycaps } from "../ui";
 import "./panels.css";
 
@@ -35,6 +36,8 @@ export type PanelItem = {
   dim?: boolean;
   info?: boolean;
   run?: () => void;
+  /** Touch: what a long press on the row does, e.g. the list actions in the switcher. */
+  hold?: () => void;
 };
 
 /** A group of rows; sections are separated by a line and may have a label (Settings). */
@@ -50,7 +53,7 @@ export type PanelProps = {
   onQueryChange?: (query: string) => void;
   /** Hides rows whose label and keywords miss the search (default). Off when the panel builds rows from the query itself. */
   filter?: boolean;
-  /** Width in px: 340 (actions, default) or 330 (switcher). */
+  /** Width in px: 340 (actions, default) or 330 (switcher). Touch sheets span the window. */
   width?: number;
   /** Denser rows, used by Settings. */
   compact?: boolean;
@@ -58,6 +61,13 @@ export type PanelProps = {
   hint?: ReactNode;
   /** Shown when no row is left. */
   empty?: ReactNode;
+  /**
+   * Touch: a sheet that is tapped, not searched, shows this title line (the task, the list) in
+   * place of the crumb and search field.
+   */
+  header?: string;
+  /** Touch: the search field takes focus on open, for panels that are typed into. */
+  typing?: boolean;
   inputRef?: Ref<HTMLInputElement>;
   /**
    * Runs before the built-in keys (but after ⌘⌫ clears a filled search); return true when the
@@ -102,6 +112,8 @@ const normalize = (text: string) => text.toLocaleLowerCase("de-DE").trim();
  * themselves whether running them closes the whole stack (store.closePanels).
  * ⌘⌫ in a filled search field clears it, as in any macOS text field, and keeps the highlighted
  * row; only a ⌘⌫ in the empty field reaches the rows (Verwerfen, Liste löschen, widerrufen).
+ * On touch rows are tapped: the field waits for a tap (unless `typing`), and nothing is
+ * highlighted until there is a search, whose first row the keyboard's return key then runs.
  */
 export function Panel({
   sections,
@@ -114,9 +126,12 @@ export function Panel({
   compact = false,
   hint,
   empty = "Keine Treffer",
+  header,
+  typing = false,
   inputRef,
   onKeyDown,
 }: PanelProps) {
+  const touch = isTouch();
   const [own, setOwn] = useState("");
   const query = controlled ?? own;
   const [highlightId, setHighlightId] = useState<string>();
@@ -137,7 +152,9 @@ export function Panel({
       .filter((section) => section.items.length);
   }, [sections, query, filter]);
   const candidates = visible.flatMap((section) => section.items).filter(runnable);
-  const highlighted = candidates.find((item) => item.id === highlightId) ?? candidates[0];
+  const highlighted =
+    candidates.find((item) => item.id === highlightId) ??
+    (touch && !query.trim() ? undefined : candidates[0]);
 
   useEffect(() => {
     if (highlighted) rows.current.get(highlighted.id)?.scrollIntoView?.({ block: "nearest" });
@@ -196,32 +213,40 @@ export function Panel({
   return (
     <div
       className={cx("pal", compact && "set")}
-      style={{ width }}
+      style={{ "--pal-w": `${width}px` }}
       role="dialog"
-      aria-label={placeholder}
+      aria-label={touch && header !== undefined ? header : placeholder}
     >
-      <div className="q">
-        {crumb && (
-          <span className="crumb">
-            {crumb}
-            <ChevronRight size={12} />
-          </span>
-        )}
-        <input
-          ref={inputRef}
-          autoFocus
-          value={query}
-          placeholder={placeholder}
-          spellCheck={false}
-          autoComplete="off"
-          role="combobox"
-          aria-expanded
-          aria-controls={listId}
-          aria-activedescendant={highlighted ? `${listId}-${highlighted.id}` : undefined}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={handleKey}
-        />
-      </div>
+      {touch && header !== undefined ? (
+        <div className="q">
+          <span className="hd">{header}</span>
+        </div>
+      ) : (
+        <div className="q">
+          {crumb && (
+            <span className="crumb">
+              {crumb}
+              <ChevronRight size={12} />
+            </span>
+          )}
+          <input
+            ref={inputRef}
+            autoFocus={!touch || typing}
+            value={query}
+            placeholder={placeholder}
+            spellCheck={false}
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            role="combobox"
+            aria-expanded
+            aria-controls={listId}
+            aria-activedescendant={highlighted ? `${listId}-${highlighted.id}` : undefined}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleKey}
+          />
+        </div>
+      )}
       <div className="pl" id={listId} role="listbox">
         {visible.length ? (
           visible.map((section, index) => (
@@ -249,9 +274,22 @@ export function Panel({
                       item.info && "info",
                     )}
                     onMouseMove={() => {
-                      if (runnable(item) && !isHighlighted) setHighlightId(item.id);
+                      // iOS sends one before each tap; a highlight then would show the
+                      // row's extras (the ⌘P star) and cost the tap.
+                      if (!touch && runnable(item) && !isHighlighted) setHighlightId(item.id);
                     }}
-                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseDown={(event) => {
+                      // Keeps the focus in the search field, except for a field in the row
+                      // (Datum wählen), which must take it to open its picker.
+                      if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+                    }}
+                    onPointerDown={
+                      item.hold &&
+                      longPress(() => {
+                        item.hold?.();
+                        return true;
+                      })
+                    }
                     onClick={() => {
                       if (runnable(item)) item.run?.();
                     }}

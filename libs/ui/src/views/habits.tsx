@@ -65,7 +65,11 @@ export function HabitsView({ list }: { list: List }) {
       {tree(model.open)}
       {!total && !creating && (
         <EmptyLine>
-          Noch keine Habits. <kbd>⌘N</kbd> legt einen an.
+          Noch keine Habits.
+          <span className="kh">
+            {" "}
+            <kbd>⌘N</kbd> legt einen an.
+          </span>
         </EmptyLine>
       )}
     </>

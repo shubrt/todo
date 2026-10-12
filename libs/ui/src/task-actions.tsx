@@ -1,6 +1,8 @@
 import { api } from "@todo/backend/api";
 import type { Id } from "@todo/backend/dataModel";
+import type { OptimisticLocalStore } from "convex/browser";
 import { useMutation } from "convex/react";
+import type { FunctionArgs } from "convex/server";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useWrite, type List, type Task } from "./data";
 import { findTask, useApp, type TaskItem } from "./store";
@@ -31,6 +33,32 @@ export function abilities({ task, subtasks, parent, sortable }: TaskItem) {
   };
 }
 
+/**
+ * Optimistic tasks.reorder: in every loaded list that shows all the named tasks, they take
+ * each other's places in the new order. The others stay put, and so does done before open.
+ */
+function showOrder(
+  store: OptimisticLocalStore,
+  { taskIds }: FunctionArgs<typeof api.tasks.reorder>,
+) {
+  const reordered = (tasks: Task[]) => {
+    const byId = new Map(tasks.map((task) => [task._id, task]));
+    const named = taskIds.flatMap((id) => byId.get(id) ?? []);
+    if (named.length < taskIds.length) return;
+    const ids = new Set<string>(taskIds);
+    let next = 0;
+    return tasks.map((task) => (ids.has(task._id) ? named[next++]! : task));
+  };
+  for (const { args, value } of store.getAllQueries(api.tasks.list)) {
+    const tasks = value && reordered(value);
+    if (tasks) store.setQuery(api.tasks.list, args, tasks);
+  }
+  for (const { args, value } of store.getAllQueries(api.tasks.deferred)) {
+    const tasks = value && reordered(value);
+    if (tasks) store.setQuery(api.tasks.deferred, args, tasks);
+  }
+}
+
 /** Where a new row lands: a list (a habit in Habits, else Tasks of that list) or a parent. */
 export type CreateTarget = { list: List } | { parentId: Id<"tasks"> };
 
@@ -52,8 +80,34 @@ function useActionsValue() {
   const create = useMutation(api.tasks.create);
   const createRecurrence = useMutation(api.recurrences.create);
 
+  // Drag only: ⌥↑/⌥↓ stay as they were, without an optimistic update.
+  const reorderNow = useMemo(() => reorder.withOptimisticUpdate(showOrder), [reorder]);
+
   return useMemo(() => {
     const store = useApp.getState;
+    /** The tasks.reorder arguments that move the task `steps` places; none at either end. */
+    const orderAfter = (taskId: Id<"tasks">, steps: number) => {
+      const item = findTask(store().items, taskId);
+      if (!item?.sortable) return;
+      const { task } = item;
+      // Für später mixes both sections, but each section is its own order on the server.
+      const group = item.siblings.filter(
+        (sibling) => task.parentId !== undefined || sibling.section === task.section,
+      );
+      const isPeer = (sibling: Task) => sibling.state === task.state;
+      const peers = group.filter(isPeer);
+      const from = peers.findIndex((sibling) => sibling._id === taskId);
+      const to = Math.max(0, Math.min(peers.length - 1, from + steps));
+      if (to === from) return;
+      const moved = peers.toSpliced(from, 1).toSpliced(to, 0, task);
+      let next = 0;
+      return {
+        taskIds: group.map((sibling) => (isPeer(sibling) ? moved[next++]! : sibling)._id),
+        ...(task.parentId
+          ? { parentId: task.parentId }
+          : { ...(task.listId ? { listId: task.listId } : {}), section: task.section }),
+      };
+    };
     return {
       /** Completes an open task; reopens a task completed today. */
       toggleDone: (task: Task) =>
@@ -130,35 +184,18 @@ function useActionsValue() {
       },
       outdent: (task: Task) => write(task._id, () => outdent({ taskId: task._id })),
       /**
-       * Swaps the task with its neighbor of the same state (open or done) and saves the whole
-       * group order; in Habits that order also becomes the order of the coming days.
+       * Moves the task `steps` places among its peers of the same state (open or done) and
+       * saves the whole group order; in Habits that order also becomes the order of the coming
+       * days. ⌥↑/⌥↓ move one place and wait for the server.
        */
-      reorder: (taskId: Id<"tasks">, direction: 1 | -1) => {
-        const item = findTask(store().items, taskId);
-        if (!item?.sortable) return;
-        const { task } = item;
-        // Für später mixes both sections, but each section is its own order on the server.
-        const group = item.siblings.filter(
-          (sibling) => task.parentId !== undefined || sibling.section === task.section,
-        );
-        const peers = group.filter((sibling) => sibling.state === task.state);
-        const neighbor = peers[peers.findIndex((sibling) => sibling._id === taskId) + direction];
-        if (!neighbor) return;
-        const taskIds = group.map((sibling) =>
-          sibling._id === taskId
-            ? neighbor._id
-            : sibling._id === neighbor._id
-              ? taskId
-              : sibling._id,
-        );
-        return write(taskId, () =>
-          reorder({
-            taskIds,
-            ...(task.parentId
-              ? { parentId: task.parentId }
-              : { ...(task.listId ? { listId: task.listId } : {}), section: task.section }),
-          }),
-        );
+      reorder: (taskId: Id<"tasks">, steps: number) => {
+        const order = orderAfter(taskId, steps);
+        return order && write(taskId, () => reorder(order));
+      },
+      /** The same for a dragged row's drop, shown at once so the row stays where it landed. */
+      drop: (taskId: Id<"tasks">, steps: number) => {
+        const order = orderAfter(taskId, steps);
+        return order && write(taskId, () => reorderNow(order));
       },
     };
   }, [
@@ -168,6 +205,7 @@ function useActionsValue() {
     update,
     move,
     reorder,
+    reorderNow,
     discard,
     clearInbox,
     normalizeUrgency,

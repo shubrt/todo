@@ -151,11 +151,30 @@ export function useWorkspaceKeys(context: WorkspaceContext) {
   }, []);
 }
 
+/**
+ * ⌘N, and the rail's "+" on touch: the new-row editor in the open list. Wichtig, Verlauf and
+ * Wiederholungen have no new row, so it switches to the default list first.
+ */
+export function startNewTask({
+  lists,
+  list,
+  settings,
+  actions,
+}: WorkspaceContext & { actions: TaskActions }) {
+  const state = useApp.getState();
+  const target =
+    list?.kind === "tasks" || list?.kind === "habits"
+      ? list
+      : lists?.find((entry) => entry._id === settings?.defaultListId);
+  if (!target) return;
+  if (target !== list) state.open({ id: target._id });
+  if (target.kind === "tasks") state.setSectionOpen(target._id, "active", true);
+  actions.startCreate();
+}
+
 /** Runs the workspace action of a combo; returns whether the key was used. */
-function handleKey(
-  combo: string,
-  { lists, list, settings, actions }: WorkspaceContext & { actions: TaskActions },
-): boolean {
+function handleKey(combo: string, context: WorkspaceContext & { actions: TaskActions }): boolean {
+  const { lists, actions } = context;
   const state = useApp.getState();
   const favorite = /^mod\+([1-9])$/.exec(combo);
   if (favorite) {
@@ -168,15 +187,7 @@ function handleKey(
     return true;
   }
   if (combo === "mod+n") {
-    // Wichtig, Verlauf and Wiederholungen have no new row: switch to the default list.
-    const target =
-      list?.kind === "tasks" || list?.kind === "habits"
-        ? list
-        : lists?.find((entry) => entry._id === settings?.defaultListId);
-    if (!target) return true;
-    if (target !== list) state.open({ id: target._id });
-    if (target.kind === "tasks") state.setSectionOpen(target._id, "active", true);
-    actions.startCreate();
+    startNewTask(context);
     return true;
   }
   if (combo === "up" || combo === "down") {

@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { ListKind, Task } from "./data";
 import type { Panel } from "./panels/types";
+import { isTouch } from "./touch";
 
 /** The open list: a list id, or a list kind that exists once per owner (Wichtig, Habits, …). */
 export type ListRef = { id: Id<"lists"> } | { kind: Exclude<ListKind, "tasks"> };
@@ -51,11 +52,14 @@ type AppState = {
   selection: string | null;
   /** The selection was made by opening a list, not by the user (it does not clear the inbox). */
   autoSelected: boolean;
-  /** Select the first row as soon as the opened list publishes its rows. */
+  /**
+   * Select the first row as soon as the opened list publishes its rows. Not on touch, where
+   * nothing moves a selection and a tap selects the row it opens.
+   */
   focusOnLoad: boolean;
   items: Selectable[];
   editing: Editing | null;
-  /** Panel stack; the last entry is the visible one. */
+  /** Panel stack; the last entry is the visible one. On touch, history mirrors it (touch-layer). */
   panels: Panel[];
   /** Root task ids whose subtasks are shown. */
   expanded: Record<string, boolean>;
@@ -98,7 +102,7 @@ export const useApp = create<AppState>()(
       current: { kind: "important" },
       selection: null,
       autoSelected: false,
-      focusOnLoad: true,
+      focusOnLoad: !isTouch(),
       items: [],
       editing: null,
       panels: [],
@@ -111,7 +115,7 @@ export const useApp = create<AppState>()(
           current,
           selection: null,
           autoSelected: false,
-          focusOnLoad: true,
+          focusOnLoad: !isTouch(),
           editing: null,
           panels: [],
           items: [],

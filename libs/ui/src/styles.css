@@ -1,5 +1,6 @@
-/* todo for macOS. Values from the approved mocks (/tmp/todo-design/build.mjs). No continuously
-   repainting animations: tooltips only use a one-shot visibility delay. */
+/* todo for macOS, adapted for touch (the iPhone) at the end. Values from the approved mocks
+   (/tmp/todo-design/build.mjs). No continuously repainting animations: tooltips only use a
+   one-shot visibility delay. */
 
 :root {
   color-scheme: dark;
@@ -25,6 +26,8 @@
   --off: #ff453a;
   /* List color of a row or section; set inline per row (style="--acc: …"). */
   --acc: #8e8e93;
+  /* Vertical padding of a row: 28px rows on the Mac, 36px on touch. */
+  --row-pad: 4px;
   --font:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
 }
@@ -201,10 +204,13 @@ kbd {
 .sttip {
   right: 24px;
 }
-.st:hover .sttip,
-.ri:hover .tip {
-  visibility: visible;
-  transition: visibility 0s 0.4s;
+/* Only with a real hover: a tap on touch would leave a sticky one behind. */
+@media (hover: hover) {
+  .st:hover .sttip,
+  .ri:hover .tip {
+    visibility: visible;
+    transition: visibility 0s 0.4s;
+  }
 }
 
 .body {
@@ -345,7 +351,7 @@ kbd {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 4px 12px;
+  padding: var(--row-pad) 12px;
   border-radius: 7px;
 }
 .row.sel {
@@ -435,7 +441,7 @@ kbd {
 /* New from the inbox, until the row is selected once. */
 .inb {
   position: absolute;
-  top: 11px;
+  top: calc(var(--row-pad) + 7px);
   left: 3px;
   width: 6px;
   height: 6px;
@@ -570,4 +576,142 @@ kbd {
 }
 .toast .x {
   color: var(--danger);
+}
+
+/* Touch (the iPhone). The rules above stay the Mac's; these change sizes, hit areas and safe
+   areas only. useTouchLayer (touch-layer.ts) sets --vv-h, --vv-top and --kb. */
+
+@media (pointer: coarse) {
+  :root {
+    --row-pad: 8px;
+    /* The home indicator's inset, gone while the keyboard is up. */
+    --safe-b: max(0px, calc(env(safe-area-inset-bottom) - var(--kb, 0px)));
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+  body {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  body,
+  .list,
+  .favs {
+    touch-action: manipulation;
+  }
+  input {
+    -webkit-user-select: text;
+  }
+  /* Fixed to the visual viewport, so it ends where the keyboard starts. */
+  .app {
+    position: fixed;
+    top: var(--vv-top, 0px);
+    left: 0;
+    width: 100%;
+    height: var(--vv-h, 100%);
+    padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
+  /* No traffic lights; the status bar's inset on top. */
+  .tb {
+    height: calc(40px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0;
+  }
+  /* A tap on the title opens the list switcher (Frame in app.tsx). */
+  .ttl {
+    top: env(safe-area-inset-top);
+    padding: 0 44px;
+    pointer-events: auto;
+  }
+  .ttl > .lucide {
+    color: var(--t3);
+  }
+  /* A 44pt target; a tap shows the bubble for 2 s (StatusDot in app.tsx). */
+  .st::before {
+    content: "";
+    position: absolute;
+    inset: -14px;
+  }
+  .st.show .sttip {
+    visibility: visible;
+  }
+  /* Rail: 36pt items at a 44pt pitch, each with a 48x44 target. */
+  .side,
+  .favs {
+    gap: 8px;
+  }
+  .side {
+    padding-bottom: calc(12px + var(--safe-b));
+  }
+  .ri.sm {
+    height: 36px;
+  }
+  .ri::before {
+    content: "";
+    position: absolute;
+    inset: -4px -6px;
+  }
+  .favs {
+    overscroll-behavior: contain;
+  }
+  .list {
+    padding-bottom: calc(12px + var(--safe-b));
+    overscroll-behavior-y: contain;
+  }
+  /* Section headers as tall as the rows. */
+  .sec {
+    padding: 9px 12px;
+  }
+  /* The checkbox keeps its look; its target is the row's height and 44pt wide (the row and
+     list padding on the left, the gap on the right). Not the editor's <i class="cb">. */
+  button.cb {
+    position: relative;
+  }
+  button.cb::before {
+    content: "";
+    position: absolute;
+    inset: calc(-3px - var(--row-pad)) -10px calc(-3px - var(--row-pad)) -20px;
+  }
+  /* The subtask counter (0/5) as tall as the row. */
+  .row > .acc button.a {
+    position: relative;
+  }
+  .row > .acc button.a::before {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--row-pad)) -6px;
+  }
+  /* The selection only marks what an open sheet or an edit acts on; no keys move it here. */
+  .app:not(:has(.pal-layer)) :is(.row, .sec).sel:not(.edit) {
+    background: none;
+  }
+  /* Keyboard hints in text (wrapped in .kh) and keycaps on the login screen. */
+  .kh,
+  .login .keys {
+    display: none;
+  }
+  .login .act {
+    height: 44px;
+    padding: 0 16px;
+  }
+  .login .link {
+    padding: 12px;
+  }
+  .toast {
+    bottom: calc(16px + var(--safe-b));
+  }
+  /* A row lifted by a long press (drag.ts) floats like the toast; the rows it passes slide
+     out of its way, and their gap is where it lands. */
+  .list[data-dragging] :is(.row, .subs) {
+    position: relative;
+    transition: transform 150ms ease;
+  }
+  .list[data-dragging] [data-lift] {
+    z-index: 1;
+    transition: none;
+    background: var(--surface);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  }
 }

@@ -26,6 +26,7 @@ const fold = (text: string) => text.toLocaleLowerCase("de-DE").trim();
  * ⌘P: find and open any list. The highlighted list shows a star (⇧⌘P toggles the favorite),
  * ⌥↑/⌥↓ move a favorite, ⌘K opens its actions and their shortcuts (⌘R, ⌃⌘␣, ⇧⌘C, ⌘⌫) work
  * right here. A name that no list carries exactly offers to create that list below the matches.
+ * On touch a long press on a list opens its actions.
  */
 export function SwitcherPanel() {
   const lists = useLists();
@@ -73,6 +74,7 @@ export function SwitcherPanel() {
           </>
         ),
         run: () => useApp.getState().open({ id: list._id }),
+        hold: () => useApp.getState().openPanel({ type: "listActions", listId: list._id }),
       };
     }),
     ...(exists

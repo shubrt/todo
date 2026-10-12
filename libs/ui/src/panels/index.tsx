@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useApp } from "../store";
+import { isTouch } from "../touch";
 import { ActionsPanel, RecurrenceActionsPanel } from "./actions";
 import { DatePanel } from "./date";
 import { ListActionsPanel, ListColorPanel, ListEmojiPanel, ListRenamePanel } from "./list-actions";
@@ -27,7 +28,12 @@ export function PanelHost({ account }: { account: boolean }) {
     <div
       className="pal-layer"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) closePanels();
+        if (event.target === event.currentTarget && !isTouch()) closePanels();
+      }}
+      // Touch closes on the click instead: closing on iOS's mousedown would let the rest of
+      // the tap land on the row below. The handler also makes iOS deliver taps here at all.
+      onClick={(event) => {
+        if (event.target === event.currentTarget && isTouch()) closePanels();
       }}
     >
       {/* Keyed by depth: a panel opened on top, or uncovered again, starts fresh. */}

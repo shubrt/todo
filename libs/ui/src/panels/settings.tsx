@@ -172,6 +172,8 @@ function Settings({
   return (
     <Panel
       compact
+      // Touch shows the title instead of a search over these few rows.
+      header="Einstellungen"
       placeholder="Einstellung suchen …"
       sections={[
         ...(preferences && platform.setPreferences
@@ -352,6 +354,7 @@ export function TimeZonePanel() {
     <Panel
       crumb="Zeitzone"
       placeholder="Zeitzone suchen …"
+      typing
       query={query}
       onQueryChange={setQuery}
       filter={false}

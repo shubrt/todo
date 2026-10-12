@@ -1,17 +1,21 @@
 import type { Id } from "@todo/backend/dataModel";
-import { Calendar } from "lucide-react";
+import { Calendar, CalendarDays } from "lucide-react";
 import { useState } from "react";
 import { useDay } from "../data";
 import {
+  clockLabel,
   dateSuggestions,
   formatTime,
+  localDate,
   parseDateInput,
   relativeDays,
   snoozeEnd,
   weekdayDate,
+  zonedTime,
 } from "../dates";
 import { findTask, useApp } from "../store";
 import { useTaskActions } from "../task-actions";
+import { isTouch } from "../touch";
 import { closeThen, Panel, useCloseWhenGone, type PanelItem } from "./panel";
 import type { DateField } from "./types";
 
@@ -28,7 +32,8 @@ const hints = {
 /**
  * ⌘E Einplanen, ⇧⌘E Fällig am, ⌘L Zurückstellen for one task. The empty field shows fixed
  * suggestions with their resolved day; a typed day (dates.ts parseDateInput) comes first.
- * Zurückstellen picks a time too: 18:00 today, else 9:00, or the typed one.
+ * Zurückstellen picks a time too: 18:00 today, else 9:00, or the typed one. Touch adds
+ * Datum wählen, the system's date (and time) picker.
  */
 export function DatePanel({ taskId, field }: { taskId: Id<"tasks">; field: DateField }) {
   const item = useApp((state) => findTask(state.items, taskId));
@@ -54,6 +59,33 @@ export function DatePanel({ taskId, field }: { taskId: Id<"tasks">; field: DateF
     const time = formatTime(end.time);
     return [{ id, label: `${label} ${time}`, value, keywords: value, run: snoozeUntil(end.at) }];
   });
+
+  const pick = (value: string) => {
+    const [, date, hour, minute] = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2}))?/.exec(value) ?? [];
+    if (!date) return;
+    if (!snooze) return setDay(date)();
+    if (!hour || !minute) return;
+    const at = zonedTime(date, { hour: Number(hour), minute: Number(minute) }, timeZone);
+    // A time already past does nothing, like a typed one.
+    if (at > Date.now()) snoozeUntil(at)();
+  };
+  const picker: PanelItem[] = isTouch()
+    ? [
+        {
+          id: "pick",
+          icon: <CalendarDays size={15} />,
+          label: "Datum wählen …",
+          value: (
+            <PickerField
+              time={snooze}
+              // datetime-local takes "YYYY-MM-DDTHH:MM"; both in the account's time zone.
+              min={snooze ? `${localDate(now, timeZone)}T${clockLabel(now, timeZone)}` : today}
+              onPick={pick}
+            />
+          ),
+        },
+      ]
+    : [];
 
   const input = parseDateInput(query, today);
   let typed: PanelItem | undefined;
@@ -87,7 +119,7 @@ export function DatePanel({ taskId, field }: { taskId: Id<"tasks">; field: DateF
         ...(typed
           ? [{ id: "typed", items: [{ ...typed, icon: <Calendar size={15} />, keywords: query }] }]
           : []),
-        { id: "days", items: suggestions },
+        { id: "days", items: [...suggestions, ...picker] },
         {
           id: "clear",
           items: [
@@ -100,6 +132,33 @@ export function DatePanel({ taskId, field }: { taskId: Id<"tasks">; field: DateF
           ],
         },
       ]}
+    />
+  );
+}
+
+/**
+ * Datum wählen on touch: the system's date picker (with `time`, date and time) in a transparent
+ * field over the row, which itself has no `run`. A day counts once it is picked, since a tap
+ * that closes the panel would unmount the field before any blur; a time counts when the picker
+ * closes, since its wheels report every turn.
+ */
+function PickerField({
+  time,
+  min,
+  onPick,
+}: {
+  time: boolean;
+  min: string;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <input
+      className="pick"
+      type={time ? "datetime-local" : "date"}
+      min={min}
+      aria-label="Datum wählen"
+      onChange={time ? undefined : (event) => onPick(event.target.value)}
+      onBlur={time ? (event) => onPick(event.target.value) : undefined}
     />
   );
 }

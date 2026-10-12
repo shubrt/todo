@@ -1,10 +1,20 @@
 // @vitest-environment happy-dom
 import type { api } from "@todo/backend/api";
 import type { Id } from "@todo/backend/dataModel";
+import type { OptimisticLocalStore } from "convex/browser";
 import { getFunctionName, type FunctionReference, type FunctionReturnType } from "convex/server";
 import { act, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+  type Mock,
+} from "vite-plus/test";
 import { App } from "../src/app";
 import type { Completion, List, Recurrence, Settings, Task } from "../src/data";
 import {
@@ -51,6 +61,12 @@ const backend = vi.hoisted(() => {
       backend.version++;
       for (const listener of listeners) listener();
     },
+    /** An optimistic update: edits the loaded results, which keep the edit until the next change. */
+    edit(apply: (results: Map<string, unknown>) => void) {
+      apply(cache);
+      backend.version++;
+      for (const listener of listeners) listener();
+    },
     /** Stable results per function and args until the next change, like Convex. */
     query(name: string, args: Args) {
       const key = `${name}:${JSON.stringify(args)}`;
@@ -76,6 +92,33 @@ const backend = vi.hoisted(() => {
 const useBackend = () => useSyncExternalStore(backend.subscribe, backend.snapshot);
 const nameOf = (reference: FunctionReference<"query" | "mutation">) => getFunctionName(reference);
 
+/** Convex's local store for optimistic updates, over the loaded results of backend.query. */
+function localStore(results: Map<string, unknown>) {
+  const prefix = (query: FunctionReference<"query">) => `${nameOf(query)}:`;
+  const store = {
+    getAllQueries: (query: FunctionReference<"query">) =>
+      [...results]
+        .filter(([key]) => key.startsWith(prefix(query)))
+        .map(([key, value]) => ({
+          args: JSON.parse(key.slice(prefix(query).length)) as Args,
+          value,
+        })),
+    setQuery: (query: FunctionReference<"query">, args: Args, value: unknown) =>
+      void results.set(prefix(query) + JSON.stringify(args), value),
+  };
+  return store as OptimisticLocalStore;
+}
+/** A mutation mock that also offers Convex's optimistic variant, which edits before it calls. */
+function withOptimisticUpdate(mutation: Mock) {
+  return Object.assign(mutation, {
+    withOptimisticUpdate:
+      (update: (store: OptimisticLocalStore, args: Args) => void) => (args: Args) => {
+        backend.edit((results) => update(localStore(results), args));
+        return mutation(args);
+      },
+  });
+}
+
 vi.mock("convex/react", () => ({
   useConvexAuth: () => {
     useBackend();
@@ -85,7 +128,8 @@ vi.mock("convex/react", () => ({
     useBackend();
     return backend.connection;
   },
-  useMutation: (reference: FunctionReference<"mutation">) => backend.mutation(nameOf(reference)),
+  useMutation: (reference: FunctionReference<"mutation">) =>
+    withOptimisticUpdate(backend.mutation(nameOf(reference))),
   useQuery: (reference: FunctionReference<"query">, args: Args) => {
     useBackend();
     return backend.query(nameOf(reference), args);
@@ -1714,5 +1758,289 @@ describe("Sonderlisten", () => {
     await press("mod+backspace");
     expect(mutation("recurrences:remove")).toHaveBeenCalledWith({ recurrenceId: "r-miete" });
     expect($(".pal")).toBeNull();
+  });
+});
+
+describe("Touch", () => {
+  // happy-dom answers (pointer: coarse) and (hover: hover) from maxTouchPoints.
+  beforeEach(() => {
+    Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, get: () => 5 });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "maxTouchPoints");
+  });
+  /** Sets a native picker's value, like the system picker does. */
+  async function pick(input: HTMLElement | null | undefined, value: string, event: string) {
+    if (!(input instanceof HTMLInputElement)) throw new Error("Missing picker.");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input.dispatchEvent(new Event(event, { bubbles: true }));
+    });
+  }
+  const panelRow = (label: string) =>
+    $$(".pal .pi").find((row) => row.querySelector(".pt")?.textContent === label);
+  /** One finger on `element` at height `y`, as iOS reports it. */
+  async function finger(type: string, element: Element | null | undefined, y: number) {
+    if (!element) throw new Error("Missing element.");
+    await act(async () => {
+      element.dispatchEvent(
+        new PointerEvent(type, { pointerType: "touch", pointerId: 1, clientY: y, bubbles: true }),
+      );
+    });
+  }
+  /** Lets a resting finger turn into a long press. */
+  const wait = () => act(async () => vi.advanceTimersByTime(450));
+
+  it("öffnet mit einem Tipp auf die Zeile die Aktionen als Blatt unter ihrem Titel", async () => {
+    await render();
+    await click(rowOf("Reise DB")?.querySelector(".t"));
+    expect(app().selection).toBe("reise");
+    expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
+    expect($(".pal .hd")?.textContent).toBe("Reise DB");
+    expect($(".pal input")).toBeNull();
+    expect($(".pal .pi.sel")).toBeNull();
+    await click($(".pal-layer"));
+    expect($(".pal")).toBeNull();
+
+    // The checkbox and the subtask counter keep their own tap.
+    await click(rowOf("Reise DB")?.querySelector(".cb"));
+    expect(mutation("tasks:complete")).toHaveBeenCalledWith({ taskId: "reise" });
+    await click(rowOf("Neo Basis")?.querySelector("[aria-expanded]"));
+    expect(app().expanded.neo).toBe(true);
+    expect(app().panels).toEqual([]);
+  });
+
+  it("wählt beim Öffnen nichts aus und markiert erst mit einer Suche die erste Zeile", async () => {
+    await render();
+    await click($(".side [aria-label='me']"));
+    expect(title()).toBe("💌me");
+    expect(app().selection).toBeNull();
+
+    await click(rowOf("Mama anrufen")?.querySelector(".t"));
+    await click(panelRow("Einplanen …"));
+    const search = $(".pal input");
+    expect(document.activeElement).not.toBe(search);
+    expect($(".pal .pi.sel")).toBeNull();
+    await act(async () => search?.focus());
+    await type("mo");
+    expect($(".pal .pi.sel .pt")?.textContent).toBe("Mo., 12. Okt.");
+  });
+
+  it("öffnet mit dem Titel die Listensuche und zeigt die Blase des Punkts 2 s lang", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(now);
+    await render();
+    await click($(".ttl"));
+    expect(app().panels).toEqual([{ type: "switcher" }]);
+    expect(document.activeElement).not.toBe($(".pal input"));
+    await click($(".pal-layer"));
+
+    await click($(".st"));
+    expect($(".st")?.className).toBe("st ok show");
+    await act(async () => vi.advanceTimersByTime(2000));
+    expect($(".st")?.className).toBe("st ok");
+  });
+
+  it("legt mit + über den Einstellungen in der Standardliste an", async () => {
+    await render();
+    expect(
+      $$(".side .ri")
+        .map((item) => item.getAttribute("aria-label"))
+        .slice(-2),
+    ).toEqual(["Neue Aufgabe", "Einstellungen"]);
+    await click($(".side [aria-label='Wichtig']"));
+    await click($(".side [aria-label='Neue Aufgabe']"));
+    expect(title()).toBe("💌me");
+    expect(app().editing).toEqual({ type: "create" });
+    expect((document.activeElement as HTMLInputElement).placeholder).toBe("Neue Aufgabe");
+  });
+
+  it("hat auf dem Mac weder Tipp auf Titel und Punkt noch +", async () => {
+    Reflect.deleteProperty(navigator, "maxTouchPoints");
+    await render();
+    await click($(".ttl"));
+    await click($(".st"));
+    expect(app().panels).toEqual([]);
+    expect($(".st")?.className).toBe("st ok");
+    expect($(".side [aria-label='Neue Aufgabe']")).toBeNull();
+  });
+
+  it("plant und stellt über die Datumsauswahl des Systems zurück, nie in die Vergangenheit", async () => {
+    await render();
+    await click(rowOf("Reise DB")?.querySelector(".t"));
+    await click(panelRow("Einplanen …"));
+    const day = panelRow("Datum wählen …")?.querySelector<HTMLInputElement>("input.pick");
+    expect(day?.type).toBe("date");
+    // The row lets the press through, so the field takes focus and opens the picker.
+    const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    day?.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(false);
+    await pick(day, "2026-10-15", "change");
+    expect(mutation("tasks:plan")).toHaveBeenCalledWith({
+      taskId: "reise",
+      plannedFor: "2026-10-15",
+    });
+    expect($(".pal")).toBeNull();
+
+    await click(rowOf("Reise DB")?.querySelector(".t"));
+    await click(panelRow("Zurückstellen …"));
+    const time = panelRow("Datum wählen …")?.querySelector<HTMLInputElement>("input.pick");
+    expect(time?.type).toBe("datetime-local");
+    expect(time?.min).toBe("2026-10-08T10:00");
+    // A time counts once the picker closes; one already past does nothing.
+    await act(async () => time?.focus());
+    await pick(time, "2026-10-08T09:30", "input");
+    await act(async () => time?.blur());
+    expect(mutation("tasks:snooze")).not.toHaveBeenCalled();
+    await act(async () => time?.focus());
+    await pick(time, "2026-10-15T09:30", "input");
+    expect(mutation("tasks:snooze")).not.toHaveBeenCalled();
+    await act(async () => time?.blur());
+    expect(mutation("tasks:snooze")).toHaveBeenCalledWith({
+      taskId: "reise",
+      snoozedUntil: Date.parse("2026-10-15T07:30:00Z"),
+    });
+  });
+
+  it("öffnet mit langem Druck auf eine Liste ihre Aktionen, in der Leiste und in der Suche", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(now);
+    await render();
+    const me = $(".side [aria-label='me']");
+    // A finger that moves first is scrolling.
+    await finger("pointerdown", me, 100);
+    await finger("pointermove", me, 109);
+    await wait();
+    await finger("pointerup", me, 109);
+    expect(app().panels).toEqual([]);
+
+    await finger("pointerdown", me, 100);
+    await wait();
+    expect(app().panels).toEqual([{ type: "listActions", listId: "l-me" }]);
+    expect($(".pal .hd")?.textContent).toBe("me");
+    // The release's click opens no list.
+    await finger("pointerup", me, 100);
+    await click(me);
+    expect(title()).toBe("💻work");
+
+    // In the switcher they open on top of it, and the click lands on the sheet without effect.
+    await click($(".pal-layer"));
+    await click($(".ttl"));
+    const agency = panelRow("agency");
+    await finger("pointerdown", agency, 300);
+    await wait();
+    await finger("pointerup", agency, 300);
+    await click($(".pal-layer"));
+    expect(app().panels).toEqual([
+      { type: "switcher" },
+      { type: "listActions", listId: "l-agency" },
+    ]);
+  });
+
+  it("sortiert eine offene Aufgabe mit langem Druck und Ziehen um", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(now);
+    // happy-dom lays nothing out: rows 36 px tall from y 50 in a list 600 px tall.
+    const tops: Record<string, number> = {
+      servoy: 50,
+      umbau: 86,
+      reise: 122,
+      neo: 158,
+      release: 194,
+    };
+    const rects = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const top = tops[this.dataset.task ?? ""];
+        return top === undefined ? new DOMRect(0, 0, 300, 600) : new DOMRect(0, top, 300, 36);
+      });
+    onTestFinished(() => rects.mockRestore());
+    await render();
+    const umbau = rowOf("Umbau auf Todo App");
+    // Without the hold the finger scrolls, and a cancel puts a lifted row back.
+    await finger("pointerdown", umbau, 104);
+    await finger("pointermove", umbau, 184);
+    await wait();
+    await finger("pointerup", umbau, 184);
+    await finger("pointerdown", umbau, 104);
+    await wait();
+    await finger("pointermove", umbau, 184);
+    await finger("pointercancel", umbau, 184);
+    expect(umbau?.style.transform).toBe("");
+    expect(mutation("tasks:reorder")).not.toHaveBeenCalled();
+
+    // Two rows down: it follows the finger and the rows it passed move up.
+    await finger("pointerdown", umbau, 104);
+    await wait();
+    await finger("pointermove", umbau, 184);
+    expect($(".list")?.dataset.dragging).toBe("");
+    expect(
+      ["Umbau auf Todo App", "Reise DB", "Neo Basis", "Release prüfen"].map(
+        (text) => rowOf(text)?.style.transform,
+      ),
+    ).toEqual(["translateY(80px)", "translateY(-36px)", "translateY(-36px)", ""]);
+    // Shown at once, and the release opens no sheet.
+    await finger("pointerup", umbau, 184);
+    await click(umbau?.querySelector(".t"));
+    expect(mutation("tasks:reorder")).toHaveBeenCalledExactlyOnceWith({
+      taskIds: ["servoy", "reise", "neo", "umbau", "release"],
+      listId: "l-work",
+      section: "active",
+    });
+    expect(texts(".row .t")).toEqual([
+      "Servoy API Scripts",
+      "Reise DB",
+      "Neo Basis",
+      "Umbau auf Todo App",
+      "Release prüfen",
+    ]);
+    expect(app().panels).toEqual([]);
+    expect($(".list")?.dataset.dragging).toBeUndefined();
+    expect(umbau?.style.transform).toBe("");
+
+    // A live update that changes the run meanwhile (Reise DB done elsewhere) sends the row back
+    // unsaved.
+    await run(() => backend.change());
+    await finger("pointerdown", umbau, 104);
+    await wait();
+    await finger("pointermove", umbau, 184);
+    await run(() => backend.change(() => Object.assign(data.tasks[2]!, done)));
+    await finger("pointerup", umbau, 184);
+    await click(umbau?.querySelector(".t"));
+    expect(mutation("tasks:reorder")).toHaveBeenCalledTimes(1);
+  });
+
+  it("tauscht auf dem Mac mit ⌥↓ wie bisher und wartet auf den Server", async () => {
+    Reflect.deleteProperty(navigator, "maxTouchPoints");
+    await render();
+    await run(() => app().select("umbau"));
+    await press("alt+down");
+    expect(mutation("tasks:reorder")).toHaveBeenCalledWith({
+      taskIds: ["servoy", "reise", "umbau", "neo", "release"],
+      listId: "l-work",
+      section: "active",
+    });
+    expect(texts(".row .t")).toEqual([
+      "Servoy API Scripts",
+      "Umbau auf Todo App",
+      "Reise DB",
+      "Neo Basis",
+      "Release prüfen",
+    ]);
+  });
+
+  it("schließt mit dem Wischen zurück das oberste Panel", async () => {
+    await render();
+    await click(rowOf("Reise DB")?.querySelector(".t"));
+    await click(panelRow("Einplanen …"));
+    expect(history.state).toEqual({ panel: 2 });
+    await act(async () => history.back());
+    expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
+    // Closing in the app goes back too, and a swipe forward into a closed panel is undone.
+    await click($(".pal-layer"));
+    expect(history.state).toBeNull();
+    await act(async () => history.forward());
+    expect(history.state).toBeNull();
+    expect(app().panels).toEqual([]);
   });
 });

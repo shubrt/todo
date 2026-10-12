@@ -84,7 +84,11 @@ export function ListView({ list }: { list: List }) {
               {tree(open)}
               {!open.length && !creating && (
                 <EmptyLine>
-                  Nichts offen. <kbd>⌘N</kbd> legt eine Aufgabe an.
+                  Nichts offen.
+                  <span className="kh">
+                    {" "}
+                    <kbd>⌘N</kbd> legt eine Aufgabe an.
+                  </span>
                 </EmptyLine>
               )}
             </>

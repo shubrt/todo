@@ -9,11 +9,13 @@ import {
   SectionHeader,
   startsRename,
   TitleInput,
+  useRowTap,
   useSelectables,
   useSelectedRow,
 } from "../rows";
 import { useApp, type Selectable } from "../store";
 import { useTaskActions } from "../task-actions";
+import { isTouch } from "../touch";
 import { cx } from "../ui";
 import { byList } from "./by-list";
 import "./views.css";
@@ -39,7 +41,7 @@ const openActions = (recurrenceId: Id<"recurrences">) =>
 /**
  * Wiederholungen: recurring tasks and habits in one section per list (no emoji in the
  * header), habits in their Habits order. Paused ones stay in place, dimmed. ↵ renames,
- * ⌘K and right click open the recurrence actions (panels/actions.tsx).
+ * ⌘K, right click and a tap on touch open the recurrence actions (panels/actions.tsx).
  */
 export function RecurrencesView(_props: { list: List }) {
   const recurrences = useQuery(api.recurrences.list, {});
@@ -88,6 +90,7 @@ function RecurrenceRow({ item, color }: { item: Recurrence; color: string }) {
   const write = useWrite();
   const rule = ruleLabel(item);
   const select = () => useApp.getState().select(item._id);
+  const tap = useRowTap(item._id, () => openActions(item._id));
   return (
     <div
       ref={ref}
@@ -98,11 +101,15 @@ function RecurrenceRow({ item, color }: { item: Recurrence; color: string }) {
       onMouseDown={(event) => {
         if (event.button === 0) select();
       }}
+      onPointerDown={tap.onPointerDown}
+      onClick={tap.onClick}
       onDoubleClick={(event) => {
         if (startsRename(event, editing)) actions.rename(item._id);
       }}
       onContextMenu={(event) => {
         event.preventDefault();
+        // A long press on touch can fire this too; the sheet opens on a tap there.
+        if (isTouch()) return;
         select();
         openActions(item._id);
       }}
