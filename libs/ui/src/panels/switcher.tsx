@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useCurrentList, useLists, useWrite, type List } from "../data";
 import { hasModifier, matches } from "../keymap";
 import { useApp } from "../store";
+import { isTouch } from "../touch";
 import { ListMark } from "../ui";
 import { useListActions, useMoveFavorite } from "./list-actions";
 import { Panel, type PanelItem, type PanelSection } from "./panel";
@@ -26,7 +27,8 @@ const fold = (text: string) => text.toLocaleLowerCase("de-DE").trim();
  * ⌘P: find and open any list. The highlighted list shows a star (⇧⌘P toggles the favorite),
  * ⌥↑/⌥↓ move a favorite, ⌘K opens its actions and their shortcuts (⌘R, ⌃⌘␣, ⇧⌘C, ⌘⌫) work
  * right here. A name that no list carries exactly offers to create that list below the matches.
- * On touch a long press on a list opens its actions.
+ * On touch the lists are tiles with their count, the current one ringed, and a long press on
+ * one opens its actions.
  */
 export function SwitcherPanel() {
   const lists = useLists();
@@ -38,6 +40,7 @@ export function SwitcherPanel() {
   const moveFavorite = useMoveFavorite();
   const [query, setQuery] = useState("");
   if (!lists) return null;
+  const touch = isTouch();
 
   const toggleFavorite = (list: List) =>
     void write(list._id, () => update({ listId: list._id, favorite: !list.favorite }));
@@ -50,33 +53,37 @@ export function SwitcherPanel() {
   const sections: PanelSection[] = [
     ...listSections(lists, (list) => {
       const open = list.openCount || null;
-      const count = list._id === current?._id ? (open ? `aktuell · ${open}` : "aktuell") : open;
+      const isCurrent = list._id === current?._id;
+      const count = isCurrent ? (open ? `aktuell · ${open}` : "aktuell") : open;
       return {
         id: list._id,
         icon: <ListMark list={list} />,
         label: list.name,
-        value: (highlighted) => (
-          <>
-            {count}
-            {highlighted && (
-              <span
-                className="fav"
-                role="button"
-                aria-label={list.favorite ? "Kein Favorit" : "Als Favorit"}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleFavorite(list);
-                }}
-              >
-                <Star size={13} fill={list.favorite ? "currentColor" : "none"} />
-              </span>
-            )}
-          </>
-        ),
+        current: isCurrent,
+        value: touch
+          ? open
+          : (highlighted) => (
+              <>
+                {count}
+                {highlighted && (
+                  <span
+                    className="fav"
+                    role="button"
+                    aria-label={list.favorite ? "Kein Favorit" : "Als Favorit"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleFavorite(list);
+                    }}
+                  >
+                    <Star size={13} fill={list.favorite ? "currentColor" : "none"} />
+                  </span>
+                )}
+              </>
+            ),
         run: () => useApp.getState().open({ id: list._id }),
         hold: () => useApp.getState().openPanel({ type: "listActions", listId: list._id }),
       };
-    }),
+    }).map((section) => ({ ...section, columns: 3 as const })),
     ...(exists
       ? []
       : [
@@ -97,7 +104,7 @@ export function SwitcherPanel() {
 
   return (
     <Panel
-      placeholder="Liste suchen …"
+      placeholder={touch ? "Liste suchen" : "Liste suchen …"}
       width={330}
       query={query}
       onQueryChange={setQuery}

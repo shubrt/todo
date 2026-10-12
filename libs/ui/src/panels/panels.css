@@ -215,40 +215,220 @@
   margin: 4px;
 }
 
-/* Touch: a sheet at the bottom, above the home indicator and the keyboard (touch-layer.ts), with
-   44pt rows and no keycaps. */
+/* Touch: every panel is a drawer on the bottom edge (values from the "D" mock), over a scrim,
+   above the home indicator and the keyboard (touch-layer.ts). Its head (grabber, what it acts
+   on, the search field) pulls it down to close (pullDown in touch.ts); below it the rows and
+   tiles scroll. 44pt rows with inset hairlines, no keycaps. */
 @media (pointer: coarse) {
+  .pal-layer {
+    background: rgba(0, 0, 0, 0.55);
+  }
   .pal {
     top: auto;
-    bottom: calc(8px + var(--safe-b));
-    left: calc(8px + env(safe-area-inset-left));
-    right: calc(8px + env(safe-area-inset-right));
+    bottom: 0;
+    left: 0;
+    right: 0;
     width: auto;
     max-width: none;
     /* The title bar stays visible above it. */
-    max-height: calc(100% - env(safe-area-inset-top) - 56px - var(--safe-b));
+    max-height: calc(100% - env(safe-area-inset-top) - 48px);
     transform: none;
+    padding: 6px env(safe-area-inset-right) max(12px, var(--safe-b)) env(safe-area-inset-left);
+    border: 0;
+    border-radius: 14px 14px 0 0;
+    background: #1c1c1e;
+    box-shadow: none;
+    font-size: 15px;
+  }
+  .pal .head {
+    flex: none;
+    touch-action: none;
+  }
+  .pal .grab {
+    display: block;
+    width: 36px;
+    height: 5px;
+    margin: 0 auto 4px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.28);
+  }
+  /* What the drawer acts on (Panel `head`): a title, or a task as in its row. */
+  .pal .hd {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px;
+    font-weight: 600;
+  }
+  .pal .hd .cb {
+    margin-top: 0;
+  }
+  .pal .hd .ht {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pal .hd .hm {
+    flex: none;
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--t2);
+  }
+  .pal .q {
+    height: 36px;
+    gap: 8px;
+    margin: 6px 16px 8px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .pal .q input {
+    font-size: 15px;
+  }
+  .pal .crumb {
+    margin-right: 0;
+  }
+  /* A line under the head, unless tiles come first. */
+  .pal .pl {
+    padding: 0;
+    border-top: 1px solid var(--line);
+    touch-action: manipulation;
+    overscroll-behavior: contain;
+  }
+  .pal .pl:has(> .tiles:first-child) {
+    border-top: 0;
+  }
+  .pal .sep,
+  .pal.set .sep {
+    margin: 0;
   }
   .pal .pi,
   .pal.set .pi,
   .pal .pe {
+    position: relative;
     height: 44px;
+    gap: 14px;
+    padding: 0 20px;
+    border-radius: 0;
+  }
+  /* Hairlines between the rows of a section, from where the label starts. */
+  .pal .pi + .pi::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 20px;
+    right: 0;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .pal .pi + .pi:has(> .ic)::before {
+    left: 52px;
+  }
+  .pal .pi .emo-s {
+    font-size: 15px;
+  }
+  .pal .pacc {
+    font-size: 13px;
+    color: var(--t2);
+  }
+  .pal .ps,
+  .pal.set .ps {
+    height: auto;
+    padding: 14px 20px 6px;
+    font-size: 13px;
+  }
+  .pal .pi.info,
+  .pal.set .pi.info {
+    height: 36px;
+    font-size: 13px;
+  }
+  .pal .hint {
+    padding: 8px 20px 4px;
   }
   .pal .keys {
     display: none;
   }
-  /* What the sheet acts on, in place of the search field (Panel `header`). */
-  .pal .q .hd {
-    min-width: 0;
+  /* Tiles (sections with `columns`): task actions in 4 columns, lists in 3. */
+  .pal .tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    padding: 4px 16px 12px;
+  }
+  .pal .tiles.c3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding-bottom: 8px;
+  }
+  .pal .sep + .tiles {
+    padding-top: 12px;
+  }
+  .pal .tile {
+    height: 70px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.07);
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .pal .tile .tl {
+    max-width: 100%;
+    padding: 0 6px;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-weight: 600;
+  }
+  .pal .tile .lucide {
+    width: 20px;
+    height: 20px;
+  }
+  /* As tall as the icons, so the labels line up. */
+  .pal .tile .emo-s {
+    font-size: 18px;
+    line-height: 20px;
+  }
+  .pal .tile.sel {
+    background: rgba(255, 255, 255, 0.14);
+  }
+  .pal .tile.off {
+    opacity: 0.4;
+  }
+  /* A set toggle (Wichtig, KI). */
+  .pal .tiles.c4 .tile.on {
+    background: rgba(255, 255, 255, 0.2);
     color: #fff;
   }
-  /* Datum wählen: the transparent native picker covers the row and takes the tap. */
-  .pal .pi {
-    position: relative;
+  .pal .c3 .tile {
+    height: 76px;
+    gap: 4px;
+    font-size: 13px;
+    color: #fff;
   }
+  .pal .c3 .tile .emo {
+    font-size: 22px;
+  }
+  .pal .c3 .tile .lg {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .pal .tile .tv {
+    font-size: 11px;
+    color: var(--t3);
+  }
+  /* The current list. */
+  .pal .c3 .tile.on {
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
+  }
+  /* Datum wählen: the transparent native picker covers the row and takes the tap. */
   .pal .pi .pick {
     position: absolute;
     inset: 0;
@@ -256,10 +436,6 @@
     height: 100%;
     opacity: 0;
     font-size: 16px;
-  }
-  .pal .pl {
-    touch-action: manipulation;
-    overscroll-behavior: contain;
   }
   .pal .secret {
     -webkit-user-select: text;

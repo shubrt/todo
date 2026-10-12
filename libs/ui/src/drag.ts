@@ -30,7 +30,7 @@ export function dragRun({ task, siblings, sortable }: TaskItem) {
 
 /**
  * Touch: a long press lifts the row, the iOS way. Letting go in place ends any edit (its blur
- * saves) and calls `open`, which selects the row and opens its actions sheet. Moving on drags
+ * saves) and calls `open`, which selects the row and opens its actions drawer. Moving on drags
  * a task row (`drag`) within its run (dragRun), and letting go saves the new place through
  * actions.drop. Where the row cannot move (while editing, with a panel open, in a run of one,
  * in Wichtig, a recurrence), moving on puts it back and opens nothing. A press in the title

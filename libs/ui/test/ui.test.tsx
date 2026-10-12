@@ -990,6 +990,54 @@ describe("Fenster und Navigation", () => {
   });
 });
 
+describe("Start", () => {
+  // As at launch: no list open yet, and the Mac selects the first row of the list that opens.
+  beforeEach(() => useApp.setState({ current: null, focusOnLoad: true }));
+  /** Holds back a query's results, as while loading; returns the call that delivers them. */
+  function loading(name: string) {
+    const results = backend.queries[name]!;
+    backend.queries[name] = () => undefined;
+    onTestFinished(() => void (backend.queries[name] = results));
+    return () => act(async () => backend.change(() => (backend.queries[name] = results)));
+  }
+  const unfavoriteAll = () => data.lists.forEach((entry) => (entry.favorite = false));
+
+  it("startet auf dem ersten Favoriten und wählt seine erste Aufgabe aus", async () => {
+    // Wichtig, the first favorite of the fixtures.
+    data.lists[0]!.favorite = false;
+    await render();
+    expect(title()).toBe("💌me");
+    expect(app().selection).toBe("mama");
+  });
+
+  it("startet ohne Favoriten in der Standardliste, sobald die Einstellungen da sind", async () => {
+    unfavoriteAll();
+    data.settings.defaultListId = listIds.work;
+    const settings = loading("settings:get");
+    await render();
+    expect(title()).toBe("");
+    expect($(".side")).toBeNull();
+    await settings();
+    expect(title()).toBe("💻work");
+  });
+
+  it("startet ohne Favoriten und ohne Standardliste in Wichtig", async () => {
+    unfavoriteAll();
+    data.settings.defaultListId = "l-gone" as Id<"lists">;
+    await render();
+    expect(title()).toBe("‼️Wichtig");
+  });
+
+  it("behält eine Liste, die vor dem Laden der Listen geöffnet wurde", async () => {
+    const lists = loading("lists:list");
+    await render();
+    expect(title()).toBe("");
+    await act(async () => navigate("history"));
+    await lists();
+    expect(title()).toBe("🕘Verlauf");
+  });
+});
+
 describe("Normale Liste", () => {
   it("zeigt Abschnitte, Erledigtes zuerst und Angaben in fester Reihenfolge", async () => {
     await render();
@@ -1781,6 +1829,10 @@ describe("Touch", () => {
   }
   const panelRow = (label: string) =>
     $$(".pal .pi").find((row) => row.querySelector(".pt")?.textContent === label);
+  /** Labels of the drawer's tiles, and the tile with that label. */
+  const tiles = () => texts(".pal .tile .tl");
+  const tile = (label: string) =>
+    $$(".pal .tile").find((element) => element.querySelector(".tl")?.textContent === label);
   /** One finger on `element` at height `y`, as iOS reports it. */
   async function finger(type: string, element: Element | null | undefined, y: number) {
     if (!element) throw new Error("Missing element.");
@@ -1856,7 +1908,7 @@ describe("Touch", () => {
     expect(field()).toBe(umbau);
   });
 
-  it("öffnet mit langem Druck beim Loslassen die Aktionen als Blatt und schluckt den Klick", async () => {
+  it("öffnet mit langem Druck beim Loslassen die Aktionen als Schublade und schluckt den Klick", async () => {
     await render();
     const reise = rowOf("Reise DB");
     // A finger that moves before the hold is scrolling: nothing lifts, opens or edits.
@@ -1867,7 +1919,7 @@ describe("Touch", () => {
     expect(reise?.dataset.lift).toBeUndefined();
     expect(app().panels).toEqual([]);
 
-    // The hold only lifts the row; letting go opens the sheet under its title.
+    // The hold only lifts the row; letting go opens the drawer under its title.
     await finger("pointerdown", reise, 100);
     await wait();
     expect(reise?.dataset.lift).toBe("");
@@ -1876,7 +1928,7 @@ describe("Touch", () => {
     expect(reise?.dataset.lift).toBeUndefined();
     expect(app().selection).toBe("reise");
     expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
-    expect($(".pal .hd")?.textContent).toBe("Reise DB");
+    expect($(".pal .hd .ht")?.textContent).toBe("Reise DB");
     expect($(".pal input")).toBeNull();
     expect($(".pal .pi.sel")).toBeNull();
     // The click iOS may send on release lands on the layer and closes nothing.
@@ -1949,7 +2001,7 @@ describe("Touch", () => {
     expect(app().selection).toBeNull();
 
     await hold(rowOf("Mama anrufen"));
-    await click(panelRow("Einplanen …"));
+    await click(tile("Einplanen"));
     const search = $(".pal input");
     expect(document.activeElement).not.toBe(search);
     expect($(".pal .pi.sel")).toBeNull();
@@ -2014,12 +2066,23 @@ describe("Touch", () => {
     expect(app().selection).toBe("reise");
     expect(app().editing).toBeNull();
     expect(app().panels).toEqual([]);
+
+    // ⌘K and ⌘P stay Raycast panels: a search field and rows with keycaps, no drawer.
+    await press("mod+k");
+    expect($(".pal .q input")?.getAttribute("placeholder")).toBe("Aktion suchen …");
+    expect($(".pal .grab, .pal .hd, .pal .tile")).toBeNull();
+    expect(panelRows().slice(0, 3)).toEqual(["Wichtig", "KI-Aufgabe", "Einplanen …"]);
+    expect(panelValue("Einplanen …")).toBe("⌘E");
+    await press("escape");
+    await press("mod+p");
+    expect($(".pal .tile")).toBeNull();
+    expect(panelRows()).toContain("work");
   });
 
   it("plant und stellt über die Datumsauswahl des Systems zurück, nie in die Vergangenheit", async () => {
     await render();
     await hold(rowOf("Reise DB"));
-    await click(panelRow("Einplanen …"));
+    await click(tile("Einplanen"));
     const day = panelRow("Datum wählen …")?.querySelector<HTMLInputElement>("input.pick");
     expect(day?.type).toBe("date");
     // The row lets the press through, so the field takes focus and opens the picker.
@@ -2034,7 +2097,7 @@ describe("Touch", () => {
     expect($(".pal")).toBeNull();
 
     await hold(rowOf("Reise DB"));
-    await click(panelRow("Zurückstellen …"));
+    await click(tile("Später"));
     const time = panelRow("Datum wählen …")?.querySelector<HTMLInputElement>("input.pick");
     expect(time?.type).toBe("datetime-local");
     expect(time?.min).toBe("2026-10-08T10:00");
@@ -2072,10 +2135,10 @@ describe("Touch", () => {
     await click(me);
     expect(title()).toBe("💻work");
 
-    // In the switcher they open on top of it, and the click lands on the sheet without effect.
+    // In the switcher they open on top of it, and the click lands on the drawer without effect.
     await click($(".pal-layer"));
     await click($(".ttl"));
-    const agency = panelRow("agency");
+    const agency = tile("agency");
     await finger("pointerdown", agency, 300);
     await wait();
     await finger("pointerup", agency, 300);
@@ -2180,7 +2243,7 @@ describe("Touch", () => {
   it("schließt mit dem Wischen zurück das oberste Panel", async () => {
     await render();
     await hold(rowOf("Reise DB"));
-    await click(panelRow("Einplanen …"));
+    await click(tile("Einplanen"));
     expect(history.state).toEqual({ panel: 2 });
     await act(async () => history.back());
     expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
@@ -2190,5 +2253,161 @@ describe("Touch", () => {
     await act(async () => history.forward());
     expect(history.state).toBeNull();
     expect(app().panels).toEqual([]);
+  });
+
+  it("zeigt die Aktionen einer Aufgabe als Kacheln und Zeilen, nach denselben Regeln wie ⌘K", async () => {
+    await render();
+    // An open task: its row as the head, eight tiles, the other actions and Verwerfen last.
+    await hold(rowOf("Reise DB"));
+    expect($(".pal .grab")).not.toBeNull();
+    expect(texts(".pal .hd .ht, .pal .hd .hm")).toEqual(["Reise DB", "morgen"]);
+    expect($(".pal .hd")?.style.getPropertyValue("--acc")).toBe("#ff453a");
+    const all = ["Wichtig", "KI", "Einplanen", "Fällig", "Später", "Verschieben", "Backlog"];
+    expect(tiles()).toEqual([...all, "Erledigen"]);
+    expect($(".pal .tile.on")).toBeNull();
+    expect(panelRows()).toEqual([
+      "Titel bearbeiten",
+      "Unteraufgabe",
+      "Einrücken",
+      "Nach oben",
+      "Nach unten",
+      "Verwerfen",
+    ]);
+    expect($(".pal .pi.danger .pt")?.textContent).toBe("Verwerfen");
+    await click($(".pal-layer"));
+
+    // KI is on; overdue adds Normal einordnen after the moves, recurring drops Einrücken.
+    await hold(rowOf("Release prüfen"));
+    expect(texts(".pal .tile.on .tl")).toEqual(["KI"]);
+    expect(panelRows()).toEqual([
+      "Titel bearbeiten",
+      "Unteraufgabe",
+      "Nach oben",
+      "Nach unten",
+      "Normal einordnen",
+      "Verwerfen",
+    ]);
+    await click($(".pal-layer"));
+
+    // In the backlog the section tile leads back to Tasks.
+    await click($$(".sec").find((header) => header.textContent?.startsWith("Backlog")));
+    await hold(rowOf("Steuer"));
+    expect(tiles()).toEqual([...all.slice(0, -1), "Tasks", "Erledigen"]);
+    await click($(".pal-layer"));
+
+    // Done today: nothing to schedule, Öffnen reopens.
+    await hold(rowOf("Servoy API Scripts"));
+    expect($(".pal .hd")?.className).toBe("hd done");
+    expect(tiles()).toEqual(["Wichtig", "KI", "Verschieben", "Backlog", "Öffnen"]);
+    expect(panelRows()).toEqual(["Titel bearbeiten", "Nach oben", "Nach unten", "Verwerfen"]);
+    await click($(".pal-layer"));
+
+    // Wichtig shows part of each list: no indenting or moving; the checkbox takes the task's list color.
+    await click($(".side [aria-label='Wichtig']"));
+    await hold(rowOf("Mama anrufen"));
+    expect($(".pal .hd")?.style.getPropertyValue("--acc")).toBe("#64d2ff");
+    expect(tiles()).toEqual([...all, "Erledigen"]);
+    expect(texts(".pal .tile.on .tl")).toEqual(["Wichtig"]);
+    expect(panelRows()).toEqual(["Titel bearbeiten", "Unteraufgabe", "Verwerfen"]);
+  });
+
+  it("führt eine Kachel wie ihre Zeile aus, Verschieben öffnet sich als Schublade darüber", async () => {
+    await render();
+    await hold(rowOf("Reise DB"));
+    await click(tile("Backlog"));
+    expect(mutation("tasks:move")).toHaveBeenCalledWith({ taskId: "reise", section: "backlog" });
+    expect(app().panels).toEqual([]);
+
+    // A set toggle is named by what it does.
+    await hold(rowOf("Umbau auf Todo App"));
+    expect(tile("Wichtig")?.getAttribute("aria-label")).toBe("Nicht mehr wichtig");
+    await click(tile("Wichtig"));
+    expect(mutation("tasks:update")).toHaveBeenCalledWith({ taskId: "umbau", highPriority: false });
+
+    await hold(rowOf("Neo Basis"));
+    await click(tile("Verschieben"));
+    expect(app().panels).toEqual([
+      { type: "actions", taskId: "neo" },
+      { type: "move", taskId: "neo" },
+    ]);
+    expect($(".pal .grab")).not.toBeNull();
+    expect($(".pal .hd .ht")?.textContent).toBe("Neo Basis");
+    expect($(".pal .crumb")?.textContent).toBe("Verschieben");
+    await click(panelRow("me"));
+    expect(mutation("tasks:move")).toHaveBeenCalledWith({
+      taskId: "neo",
+      listId: "l-me",
+      section: "active",
+    });
+    expect(app().panels).toEqual([]);
+  });
+
+  it("zeigt die Listen als Kacheln, filtert sie beim Tippen und öffnet eine mit einem Tipp", async () => {
+    await render();
+    await click($(".ttl"));
+    expect($(".pal input")?.getAttribute("placeholder")).toBe("Liste suchen");
+    // Favorites in rail order, then after a line the others by name.
+    expect(texts(".pal .tiles")).toHaveLength(2);
+    expect($$(".pal .sep")).toHaveLength(1);
+    expect(tiles()).toEqual([
+      "Wichtig",
+      "me",
+      "agency",
+      "work",
+      "Habits",
+      "Urlaub",
+      "Verlauf",
+      "Wiederholungen",
+    ]);
+    expect(texts(".pal .tile.on .tl")).toEqual(["work"]);
+    expect(tile("work")?.querySelector(".tv")?.textContent).toBe("4");
+    // VoiceOver hears the count and which list is open, as the rows say it on the Mac.
+    expect(tile("work")?.getAttribute("aria-label")).toBe("work, aktuell, 4");
+    expect(tile("me")?.getAttribute("aria-label")).toBe("me");
+
+    await act(async () => $(".pal input")?.focus());
+    await type("ur");
+    expect(tiles()).toEqual(["Urlaub"]);
+    expect($(".pal .tile.sel .tl")?.textContent).toBe("Urlaub");
+    // The tile the return key opens is the field's active option.
+    const urlaub = tile("Urlaub");
+    expect(urlaub?.getAttribute("role")).toBe("option");
+    expect(urlaub?.getAttribute("aria-selected")).toBe("true");
+    expect($(".pal input")?.getAttribute("aria-activedescendant")).toBe(urlaub?.id);
+    await type("Reisen");
+    expect(tiles()).toEqual([]);
+    expect(panelRows()).toEqual(["Reisen als neue Liste anlegen"]);
+    await type("");
+    await click(tile("me"));
+    expect(title()).toBe("💌me");
+    expect(app().panels).toEqual([]);
+  });
+
+  it("schließt das oberste Panel, wenn sein Kopf weit genug nach unten gezogen wird", async () => {
+    await render();
+    await hold(rowOf("Reise DB"));
+    await click(tile("Einplanen"));
+    // The drawer follows the finger, and a short pull puts it back.
+    const head = $(".pal .head");
+    await finger("pointerdown", head, 300);
+    await finger("pointermove", head, 360);
+    expect($(".pal")?.style.transform).toBe("translateY(60px)");
+    await finger("pointerup", head, 360);
+    expect($(".pal")?.style.transform).toBe("");
+    expect(app().panels).toHaveLength(2);
+
+    // A pull on the rows scrolls them instead.
+    const row = panelRow("Morgen");
+    await finger("pointerdown", row, 300);
+    await finger("pointermove", row, 420);
+    await finger("pointerup", row, 420);
+    expect(app().panels).toHaveLength(2);
+
+    // Past the threshold the top drawer closes, back to the one below, and history follows.
+    await finger("pointerdown", $(".pal .grab"), 300);
+    await finger("pointermove", $(".pal .grab"), 420);
+    await finger("pointerup", $(".pal .grab"), 420);
+    expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
+    expect(history.state).toEqual({ panel: 1 });
   });
 });

@@ -59,53 +59,66 @@ Die Oberfläche gleicht der am Mac, siehe [Bedienung](desktop.md#bedienung). Auf
 
 ### Fenster und Seitenleiste
 
+- Wie am Mac öffnet die App beim Start den ersten Favoriten, siehe [Bedienung](desktop.md#bedienung). Jedes Laden der Seite ist ein Start, auch das Neuladen nach einem Deploy unter [Aktualisierung](#aktualisierung).
 - Die Titelleiste ist 40 Punkt hoch, sitzt unter der Statusleiste und hat keine Ampelknöpfe. Ein Tipp auf den Titel mit dem kleinen Pfeil öffnet die Listensuche, die am Mac `⌘P` öffnet.
 - Der Statuspunkt hat keinen Hover. Ein Tipp zeigt seine Blase zwei Sekunden lang.
 - Die Seitenleiste ist 48 Punkt breit. Die Favoriten stehen oben im Abstand von 44 Punkt, unten sitzt das Zahnrad der Einstellungen.
 - Unten rechts schwebt über der Liste ein weißer runder Knopf mit schwarzem `+`, 56 Punkt groß und 16 Punkt vom Rand und vom Home-Indikator entfernt. Er legt wie `⌘N` eine Aufgabe oben in Tasks der offenen Liste an, in Habits einen Habit. Aus Wichtig, Verlauf und Wiederholungen wechselt er vorher in die Standardliste. Die Tastatur öffnet sich sofort, auch wenn die Standardliste noch lädt.
-- Während einer Bearbeitung und bei offenem Blatt fehlt der Knopf. Unter der letzten Zeile bleibt so viel Platz, dass sie sich über den Knopf hinaus scrollen lässt.
+- Während einer Bearbeitung und bei offener Schublade fehlt der Knopf. Unter der letzten Zeile bleibt so viel Platz, dass sie sich über den Knopf hinaus scrollen lässt.
 - Zeilen sind 36 Punkt hoch. Die Checkbox bleibt 14 Punkt groß, ihre Trefferfläche ist 44 Punkt breit und so hoch wie die Zeile.
-- Beim Öffnen einer Liste ist nichts ausgewählt. Die Auswahl ist nur zu sehen, solange ein Blatt oder eine Bearbeitung offen ist.
+- Beim Öffnen einer Liste ist nichts ausgewählt. Die Auswahl ist nur zu sehen, solange eine Schublade oder eine Bearbeitung offen ist.
 
 ### Tippen
 
 - Die Checkbox erledigt eine Aufgabe oder öffnet sie wieder. Die Subtask-Zahl wie `0/5` klappt die Subtasks auf und zu.
 - Ein Tipp auf eine Aufgabe, einen Habit oder eine Wiederholung macht ihren Titel zum Eingabefeld, wie am Mac `↵` oder ein Doppelklick. Die Tastatur öffnet sich sofort. "Fertig" auf der Tastatur speichert wie `↵`.
-- Ein Tipp auf eine andere Zeile speichert den Titel in Arbeit und bearbeitet dann die getippte Zeile. Ein Tipp auf die Zeile, die gerade bearbeitet wird, startet weder eine neue Bearbeitung noch ein Blatt.
+- Ein Tipp auf eine andere Zeile speichert den Titel in Arbeit und bearbeitet dann die getippte Zeile. Ein Tipp auf die Zeile, die gerade bearbeitet wird, startet weder eine neue Bearbeitung noch eine Schublade.
 - Erledigte Einträge im Verlauf reagieren weder auf Tippen noch auf langen Druck.
 - Verwerfen wirkt wie am Mac sofort und ohne Rückfrage.
 - Wischaktionen auf Zeilen und Kontextmenüs gibt es nicht.
 
-### Blätter
+### Schubladen
 
-Panels erscheinen als Blatt am unteren Rand über dem Home-Indikator, so breit wie das Fenster abzüglich 16 Punkt, mit 44 Punkt hohen Zeilen. Öffnet sich die Tastatur, rückt das Blatt darüber. Ein Tipp neben das Blatt schließt alle Blätter.
+Jedes Panel öffnet sich als Schublade am unteren Rand. Sie ist so breit wie der Bildschirm, oben mit 14 Punkt gerundet und hat den Hintergrund `#1c1c1e`. Ein Schleier dunkelt den Rest ab, ein Tipp darauf schließt alle Schubladen. Unten hält die Schublade den Home-Indikator frei. Öffnet sich die Tastatur, rückt sie darüber. Sie reicht höchstens bis unter die Titelleiste, was nicht hineinpasst, scrollt.
 
-- Die Aktionen einer Aufgabe, Wiederholung oder Liste und die Einstellungen zeigen oben nur ihren Titel, ohne Suchfeld.
-- Die übrigen Panels wie Listensuche, Verschieben, Datum und Standardliste behalten ihr Suchfeld. Die Tastatur öffnet sich erst beim Tipp darauf, nur die Zeitzone öffnet sie gleich.
-- Eine Zeile ist erst markiert, wenn etwas im Suchfeld steht. Dann führt die Eingabetaste der Tastatur die erste Zeile aus.
+Oben sitzt ein Griff. Darunter steht, worauf die Schublade wirkt. Bei den Aktionen einer Aufgabe, beim Datum und bei Verschieben ist das die Aufgabe wie in ihrer Zeile, mit Checkbox in der Farbe ihrer Liste, Titel und Daten wie `morgen`. Sonst steht dort ein Titel, der Name der Liste oder Wiederholung, oder "Einstellungen", auch für Standardliste und Zeitzone. Die Listensuche hat keinen Titel.
+
+Zieht der Finger Griff, Titel oder Suchfeld nach unten, folgt ihm die Schublade. Wer sie mehr als 80 Punkt herunterzieht und loslässt, schließt sie, darunter liegt wieder die vorige. Kürzer gezogen gleitet sie zurück. Der Rest der Schublade scrollt beim Wischen nur. Auch das Wischen vom Rand schließt die oberste Schublade, siehe [Zurückwischen](#zurückwischen).
+
+Zeilen sind 44 Punkt hoch, mit Symbol, Text und rechts einem Wert, 20 Punkt vom Rand. Zwischen den Zeilen liegt eine feine Linie ab dem Text, zwischen Gruppen eine über die ganze Breite. Tastenkürzel fehlen.
+
+**Aktionen einer Aufgabe.** Unter der Aufgabe stehen die Hauptaktionen als Kacheln, vier pro Reihe: Wichtig, KI, Einplanen, Fällig, Später, Verschieben, Backlog und Erledigen. Im Backlog heißt die Kachel Tasks, bei einer heute erledigten Aufgabe heißt die letzte Öffnen. Sind Wichtig oder KI eingeschaltet, ist ihre Kachel heller. Darunter folgen als Zeilen Titel bearbeiten, Unteraufgabe, Einrücken oder Ausrücken, Nach oben, Nach unten und bei überfälligen Aufgaben Normal einordnen. Verwerfen steht rot am Ende. Was erscheint, entscheiden dieselben Regeln wie bei `⌘K`. In Wichtig fehlen Ein- und Ausrücken, Nach oben und Nach unten, bei erledigten Aufgaben Einplanen, Fällig und Später. Einplanen, Fällig, Später und Verschieben öffnen ihre Schublade über dieser.
+
+**Listensuche.** Ein Tipp auf den Titel öffnet oben das Suchfeld "Liste suchen" und darunter die Listen als Kacheln, drei pro Reihe. Jede zeigt Emoji oder Anfangsbuchstaben, Namen und die Zahl offener Aufgaben. Zuerst kommen die Favoriten in der Reihenfolge der Seitenleiste, nach einer Linie die übrigen Listen nach Namen. Die offene Liste hat einen hellen Rahmen. Tippen filtert die Kacheln. Trägt keine Liste genau den getippten Namen, steht darunter "… als neue Liste anlegen". Ein Tipp öffnet eine Liste, ein langer Druck ihre Aktionen.
+
+**Übrige Panels.** Datum, Verschieben, Listenaktionen, Umbenennen, Emoji, Farbe, Einstellungen, Standardliste und Zeitzone zeigen dieselben Zeilen wie am Mac.
+
+- Die Aktionen einer Aufgabe, Wiederholung oder Liste und die Einstellungen haben kein Suchfeld.
+- Die übrigen behalten ihr Suchfeld, vorne mit dem Schritt, etwa "Einplanen". Die Tastatur öffnet sich erst beim Tipp darauf, nur die Zeitzone öffnet sie gleich.
+- Eine Zeile oder Kachel ist erst markiert, wenn etwas im Suchfeld steht. Dann führt die Eingabetaste der Tastatur die erste aus.
 
 ### Langer Druck und Ziehen
 
 Ein langer Druck dauert 450 ms, der Finger darf sich dabei höchstens 8 Punkt bewegen. Wer sich vorher weiter bewegt, scrollt. Dann hebt sich nichts, und nichts öffnet sich.
 
-Auf einem Emoji der Seitenleiste öffnet er die Listenaktionen und ersetzt ein offenes Panel. In der Listensuche öffnet er sie über der Suche.
+Auf einem Emoji der Seitenleiste öffnet er die Listenaktionen und ersetzt ein offenes Panel. Auf einer Kachel der Listensuche öffnet er sie über der Suche.
 
 Auf einer Aufgabe, einem Habit oder einer Wiederholung hebt er nur die Zeile an. Was dann geschieht, entscheidet der Finger:
 
-- Loslassen ohne weitere Bewegung wählt die Zeile aus und öffnet ihre Aktionen als Blatt. Oben steht ihr Titel statt eines Suchfelds, Tastenkürzel fehlen. Einen Titel in Arbeit speichert die App vorher.
-- Bewegt sich der Finger weiter als 8 Punkt, zieht er die Zeile. Die übrigen Zeilen weichen aus, Loslassen speichert die neue Stelle, und kein Blatt öffnet sich. Am oberen und unteren Rand der Liste scrollt sie beim Ziehen mit.
+- Loslassen ohne weitere Bewegung wählt die Zeile aus und öffnet ihre Aktionen als Schublade, siehe [Schubladen](#schubladen). Einen Titel in Arbeit speichert die App vorher.
+- Bewegt sich der Finger weiter als 8 Punkt, zieht er die Zeile. Die übrigen Zeilen weichen aus, Loslassen speichert die neue Stelle, und keine Schublade öffnet sich. Am oberen und unteren Rand der Liste scrollt sie beim Ziehen mit.
 - Lässt sich die Zeile nicht ziehen, legt sie sich bei dieser Bewegung zurück, und nichts öffnet sich.
 
-Den Klick, den iOS nach dem Loslassen schicken kann, verwirft die App. Er startet keine Bearbeitung und schließt kein Blatt.
+Den Klick, den iOS nach dem Loslassen schicken kann, verwirft die App. Er startet keine Bearbeitung und schließt keine Schublade.
 
 Für das Ziehen gelten dieselben Grenzen wie für `⌥↑` und `⌥↓`:
 
-- Hauptaufgaben bleiben in ihrem Abschnitt. Nach Backlog und zurück geht es über das Blatt.
+- Hauptaufgaben bleiben in ihrem Abschnitt. Nach Backlog und zurück geht es über die Schublade.
 - Offene bleiben bei offenen, heute erledigte bei erledigten.
 - Subtasks bleiben bei ihrer Hauptaufgabe. Aufgeklappte Subtasks wandern mit ihrer Hauptaufgabe.
 - In Für später tauschen nur benachbarte Zeilen desselben Abschnitts.
 - In Habits gilt die neue Reihenfolge auch für die folgenden Tage.
-- In Wichtig und Wiederholungen zieht nichts, ebenso während einer Bearbeitung und bei einer Zeile ohne passende Nachbarn. Das Blatt öffnet sich dort trotzdem beim Loslassen.
+- In Wichtig und Wiederholungen zieht nichts, ebenso während einer Bearbeitung und bei einer Zeile ohne passende Nachbarn. Die Schublade öffnet sich dort trotzdem beim Loslassen.
 
 Die neue Reihenfolge erscheint sofort, bevor der Server antwortet. Hat sich die Liste während des Ziehens geändert, etwa vom Mac aus, springt die Zeile zurück und nichts wird gespeichert. Bricht iOS die Geste ab, steht alles wieder am alten Platz, und nichts öffnet sich.
 

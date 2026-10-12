@@ -150,7 +150,8 @@ export function ListActionsPanel({ listId }: { listId: Id<"lists"> }) {
   return (
     <Panel
       crumb={list.name}
-      header={list.name}
+      head={list.name}
+      search={false}
       placeholder="Aktion suchen …"
       sections={actionsOf(list)}
     />
@@ -171,6 +172,7 @@ export function ListRenamePanel({ listId }: { listId: Id<"lists"> }) {
   return (
     <Panel
       crumb="Umbenennen"
+      head={list.name}
       placeholder="Name der Liste"
       query={draft ?? list.name}
       onQueryChange={(next) => setDraft(next.slice(0, 80))}
@@ -225,6 +227,7 @@ export function ListEmojiPanel({ listId }: { listId: Id<"lists"> }) {
   return (
     <Panel
       crumb="Emoji"
+      head={list.name}
       placeholder="Emoji wählen …"
       inputRef={input}
       query={query}
@@ -287,6 +290,7 @@ export function ListColorPanel({ listId }: { listId: Id<"lists"> }) {
   return (
     <Panel
       crumb="Farbe"
+      head={list.name}
       placeholder="Farbe suchen …"
       sections={[
         {

@@ -110,6 +110,7 @@ export function DatePanel({ taskId, field }: { taskId: Id<"tasks">; field: DateF
   return (
     <Panel
       crumb={crumbs[field]}
+      head={task}
       placeholder="Tag oder Datum …"
       query={query}
       onQueryChange={setQuery}

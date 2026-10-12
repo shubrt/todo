@@ -1,16 +1,25 @@
 import { useConvexAuth } from "convex/react";
 import { ChevronDown, Plus, Settings2 } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { flushSync } from "react-dom";
 import {
   favoritesOf,
   resolveList,
   Session,
+  startList,
   syncLabels,
   useLists,
   useSettings,
   useSyncStatus,
   type List,
+  type Settings,
   type SyncStatus,
 } from "./data";
 import { startNewTask, useGlobalKeys, useWorkspaceKeys } from "./keymap";
@@ -194,6 +203,7 @@ function Workspace() {
   const actions = useTaskActions();
   const current = useApp((state) => state.current);
   const list = lists && resolveList(lists, current);
+  useStartList(lists, settings);
   useWorkspaceKeys({ lists, list, settings });
   useInboxClear();
   return (
@@ -207,7 +217,7 @@ function Workspace() {
         )
       }
       status={<StatusDot />}
-      sidebar={lists && <Sidebar lists={lists} current={list} />}
+      sidebar={lists && list && <Sidebar lists={lists} current={list} />}
       account
     >
       {list && (
@@ -235,6 +245,20 @@ function ListContent({ list }: { list: List }) {
     case "recurrences":
       return <RecurrencesView list={list} />;
   }
+}
+
+/**
+ * Opens the start list (see startList) once its data is loaded, unless a list was opened
+ * before, e.g. from the tray. Until then the workspace looks as while loading. Only once per
+ * launch or page load: a new session in the same window keeps its list.
+ */
+function useStartList(lists: List[] | undefined, settings: Settings | undefined) {
+  useLayoutEffect(() => {
+    if (useApp.getState().current) return;
+    const start = startList(lists, settings);
+    // Not open(): a panel opened meanwhile stays, and the first row still gets the selection.
+    if (start) useApp.setState({ current: start });
+  }, [lists, settings]);
 }
 
 /**
@@ -288,7 +312,7 @@ function NewTaskButton({ onNew }: { onNew: () => void }) {
  * settings button at the bottom. The lists scroll when the window is too short for them; the
  * settings button always stays visible.
  */
-function Sidebar({ lists, current }: { lists: List[]; current: List | undefined }) {
+function Sidebar({ lists, current }: { lists: List[]; current: List }) {
   // Also while one of its pickers (Zeitzone, Standardliste, …) is on top.
   const settingsOpen = useApp((state) => state.panels.some((panel) => panel.type === "settings"));
   return (
@@ -298,11 +322,11 @@ function Sidebar({ lists, current }: { lists: List[]; current: List | undefined 
           <SidebarItem
             key={list._id}
             list={list}
-            active={list._id === current?._id}
+            active={list._id === current._id}
             shortcut={index < 9 ? `⌘${index + 1}` : undefined}
           />
         ))}
-        {current && !current.favorite && (
+        {!current.favorite && (
           <>
             <span className="sl" />
             <SidebarItem list={current} active />

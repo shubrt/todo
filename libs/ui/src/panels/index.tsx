@@ -11,7 +11,8 @@ import { SwitcherPanel } from "./switcher";
 import type { Panel } from "./types";
 
 /**
- * Renders the topmost panel of the stack over the window; a click outside closes the stack.
+ * Renders the topmost panel of the stack over the window (on touch a drawer over a scrim); a
+ * click outside closes the stack.
  * Without `account` (signed out, connecting, offline) only Settings can open, without the
  * Convex parts; with it, panels may use Convex hooks and useTaskActions.
  */

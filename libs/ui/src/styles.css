@@ -712,7 +712,7 @@ kbd {
     position: absolute;
     inset: calc(-1 * var(--row-pad)) -6px;
   }
-  /* The selection only marks what an open sheet or an edit acts on; no keys move it here. */
+  /* The selection only marks what an open drawer or an edit acts on; no keys move it here. */
   .app:not(:has(.pal-layer)) :is(.row, .sec).sel:not(.edit) {
     background: none;
   }

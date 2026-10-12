@@ -38,13 +38,33 @@ export function useDay(): Day | undefined {
 /** Lists shown in the sidebar, in their order; ⌘1..⌘9 open the first nine. */
 export const favoritesOf = (lists: List[]) => lists.filter((list) => list.favorite);
 
-/** The list a ListRef points to; a deleted list falls back to the first favorite. */
-export function resolveList(lists: List[], ref: ListRef) {
+/**
+ * The list a ListRef points to, none before the start list; a deleted list falls back to the
+ * first favorite.
+ */
+export function resolveList(lists: List[], ref: ListRef | null) {
+  if (!ref) return undefined;
   if ("kind" in ref) return lists.find((list) => list.kind === ref.kind);
   return lists.find((list) => list._id === ref.id) ?? favoritesOf(lists)[0] ?? lists[0];
 }
 
-/** The open list, once lists are loaded. */
+/**
+ * The list the app starts on: the first favorite, else the default list, else Wichtig.
+ * Undefined until lists, and without favorites the settings, are loaded.
+ */
+export function startList(
+  lists: List[] | undefined,
+  settings: Settings | undefined,
+): ListRef | undefined {
+  if (!lists) return undefined;
+  const favorite = favoritesOf(lists)[0];
+  if (favorite) return { id: favorite._id };
+  if (!settings) return undefined;
+  const fallback = lists.find((list) => list._id === settings.defaultListId);
+  return fallback ? { id: fallback._id } : { kind: "important" };
+}
+
+/** The open list, once lists are loaded and the start list is known. */
 export function useCurrentList() {
   const lists = useLists();
   const current = useApp((state) => state.current);

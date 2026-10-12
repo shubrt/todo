@@ -199,7 +199,7 @@ export function useRowTap(id: string) {
 /**
  * One task: checkbox in the list color, title, details in fixed order (⚡️, subtasks, ↻, due,
  * planned, snooze, ‼️) and optional habit dots. Click selects, double click renames, right
- * click opens ⌘K; on touch a tap renames, and a long press opens ⌘K as a sheet on release or
+ * click opens ⌘K; on touch a tap renames, and a long press opens ⌘K as a drawer on release or
  * drags the row once the finger moves (drag.ts, which finds it by `data-task`). Done rows show
  * no details.
  */
@@ -253,7 +253,7 @@ export function TaskRow({
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        // A long press on touch can fire this too; the hold opens the sheet there.
+        // A long press on touch can fire this too; the hold opens the drawer there.
         if (!isTouch()) openActions();
       }}
     >
@@ -301,10 +301,6 @@ function Details({
   week?: boolean[];
 }) {
   const open = task.state !== "done";
-  const tone =
-    task.dueOn && (task.dueOn < day.today ? "late" : task.dueOn === day.today && "today");
-  const snoozed =
-    task.snoozedUntil && task.snoozedUntil > Date.now() ? task.snoozedUntil : undefined;
   const parts = open && [
     task.isAi && (
       <span key="ai" className="a">
@@ -330,6 +326,34 @@ function Details({
         <Repeat size={12} />
       </span>
     ),
+    ...dateDetails(task, day),
+    task.highPriority && (
+      <span key="important" className="a">
+        <span className="emo-s">‼️</span>
+      </span>
+    ),
+  ];
+  const shown = parts ? parts.filter(Boolean) : [];
+  if (!shown.length && !week) return null;
+  return (
+    <span className="acc">
+      {shown}
+      {week && <HabitDots week={week} />}
+    </span>
+  );
+}
+
+/**
+ * The dates of a task as details, in the row's order: due (red when late, orange today),
+ * planned, and snoozed while it lasts. Entries that do not apply are false. Also the head of a
+ * task's drawer on touch.
+ */
+export function dateDetails(task: Task, day: Day) {
+  const tone =
+    task.dueOn && (task.dueOn < day.today ? "late" : task.dueOn === day.today && "today");
+  const snoozed =
+    task.snoozedUntil && task.snoozedUntil > Date.now() ? task.snoozedUntil : undefined;
+  return [
     task.dueOn && (
       <span key="due" className={cx("a", tone)}>
         <Flag size={12} />
@@ -348,20 +372,7 @@ function Details({
         {snoozeLabel(snoozed, day.today, day.timeZone)}
       </span>
     ),
-    task.highPriority && (
-      <span key="important" className="a">
-        <span className="emo-s">‼️</span>
-      </span>
-    ),
   ];
-  const shown = parts ? parts.filter(Boolean) : [];
-  if (!shown.length && !week) return null;
-  return (
-    <span className="acc">
-      {shown}
-      {week && <HabitDots week={week} />}
-    </span>
-  );
 }
 
 /** One dot per previous day, oldest first, filled in the list color when done that day. */

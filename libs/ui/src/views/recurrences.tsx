@@ -117,7 +117,7 @@ function RecurrenceRow({ item, color }: { item: Recurrence; color: string }) {
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        // A long press on touch can fire this too; the hold opens the sheet there.
+        // A long press on touch can fire this too; the hold opens the drawer there.
         if (isTouch()) return;
         select();
         openActions(item._id);
