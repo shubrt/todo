@@ -1,7 +1,7 @@
 import { Check, CircleAlert, WifiOff } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ipcErrorMessage } from "./errors";
-import { usePlatform } from "./platform";
+import { usePlatform } from "./connection";
+import { platformErrorMessage } from "./errors";
 import { useApp } from "./store";
 import { Keycaps } from "./ui";
 
@@ -44,10 +44,10 @@ function Prompt({ icon, children }: { icon: ReactNode; children: ReactNode }) {
 
 /**
  * Sign-in with Shoo in the browser (no stored connection, or the device key was rejected).
- * ↵ starts it, esc cancels the wait. `onConnected` runs once this Mac holds a device key.
+ * ↵ starts it, esc cancels the wait. `onConnected` runs once this device holds a device key.
  */
 export function LoginView({ onConnected }: { onConnected: () => void }) {
-  const platform = usePlatform();
+  const { platform, state, update } = usePlatform();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelled = useRef(false);
@@ -57,27 +57,30 @@ export function LoginView({ onConnected }: { onConnected: () => void }) {
     setPending(true);
     setError(null);
     try {
-      platform.update(await window.desktop.login());
+      update(await platform.login());
       onConnected();
     } catch (cause) {
       if (!cancelled.current)
-        setError(ipcErrorMessage(cause, "Die Anmeldung ist fehlgeschlagen. Versuche es erneut."));
+        setError(
+          platformErrorMessage(cause, "Die Anmeldung ist fehlgeschlagen. Versuche es erneut."),
+        );
     } finally {
       setPending(false);
     }
   }
   function cancel() {
     cancelled.current = true;
-    void window.desktop.cancelLogin();
+    void platform.cancelLogin();
   }
   usePromptKeys({
     enter: pending ? undefined : () => void login(),
     escape: pending ? cancel : undefined,
   });
-  const message = error ?? platform.state?.error;
+  const message = error ?? state?.error;
+  const mac = platform.kind === "mac";
   return (
     <Prompt icon={<Check size={34} />}>
-      <p>Melde dich im Browser mit Shoo an.</p>
+      <p>{mac ? "Melde dich im Browser mit Shoo an." : "Melde dich mit Shoo an."}</p>
       {pending ? (
         <button className="act" onClick={cancel}>
           Warte auf den Browser …
@@ -89,7 +92,11 @@ export function LoginView({ onConnected }: { onConnected: () => void }) {
         </button>
       )}
       <small>
-        {pending ? "esc bricht ab" : "Dein Geräteschlüssel liegt verschlüsselt im Schlüsselbund."}
+        {pending
+          ? "esc bricht ab"
+          : mac
+            ? "Dein Geräteschlüssel liegt verschlüsselt im Schlüsselbund."
+            : "Dein Geräteschlüssel bleibt auf diesem Gerät."}
       </small>
       {message && (
         <p className="err" role="alert">
@@ -131,8 +138,8 @@ export function LoadFailedView({ message, onRetry }: { message: string; onRetry:
   );
 }
 
-/** The window could not reach the main process. */
-export function PlatformError({ message }: { message: string }) {
+/** The window could not reach its shell (the main process on the Mac). */
+export function PlatformErrorView({ message }: { message: string }) {
   return (
     <div className="login">
       <p className="err" role="alert">

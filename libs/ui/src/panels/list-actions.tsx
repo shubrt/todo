@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import type { FunctionArgs } from "convex/server";
 import { ArrowDown, ArrowUp, Palette, Pencil, Smile, Star, Trash, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePlatform } from "../connection";
 import { favoritesOf, useLists, useWrite, type List } from "../data";
 import { useApp } from "../store";
 import { applicable, closeThen, Panel, useCloseWhenGone, type PanelSection } from "./panel";
@@ -196,16 +197,18 @@ function firstEmoji(text: string) {
 
 /**
  * Emoji wählen: opens the macOS emoji picker, which types into the focused search field; the
- * first emoji that arrives (picked, typed or pasted) is saved.
+ * first emoji that arrives (picked, typed or pasted) is saved. Without a picker (the browser)
+ * an info row in its place points to the keyboard's emoji keys.
  */
 export function ListEmojiPanel({ listId }: { listId: Id<"lists"> }) {
+  const { platform } = usePlatform();
   const { list, save } = useList(listId);
   const [query, setQuery] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const openPicker = useCallback(() => {
     input.current?.focus();
-    void window.desktop.showEmojiPanel();
-  }, []);
+    void platform.showEmojiPanel?.();
+  }, [platform]);
   useEffect(openPicker, [openPicker]);
   if (!list) return null;
   const choose = (emoji: string | null) => {
@@ -227,13 +230,20 @@ export function ListEmojiPanel({ listId }: { listId: Id<"lists"> }) {
         {
           id: "emoji",
           items: applicable([
-            {
-              id: "picker",
-              icon: <Smile size={icon} />,
-              label: "Emoji-Auswahl öffnen",
-              keys: "ctrl+mod+space",
-              run: openPicker,
-            },
+            platform.showEmojiPanel
+              ? {
+                  id: "picker",
+                  icon: <Smile size={icon} />,
+                  label: "Emoji-Auswahl öffnen",
+                  keys: "ctrl+mod+space",
+                  run: openPicker,
+                }
+              : {
+                  id: "keyboard",
+                  icon: <Smile size={icon} />,
+                  label: "Emoji über die Tastatur eingeben",
+                  info: true,
+                },
             Boolean(list.emoji) && {
               id: "remove",
               icon: <X size={icon} />,
@@ -248,7 +258,7 @@ export function ListEmojiPanel({ listId }: { listId: Id<"lists"> }) {
   );
 }
 
-// The palette of new lists, in the order of listColors in @todo/contracts (not a desktop
+// The palette of new lists, in the order of listColors in @todo/contracts (not a ui
 // dependency, it would bring zod into the bundle).
 const palette = [
   { color: "#ff453a", name: "Rot" },

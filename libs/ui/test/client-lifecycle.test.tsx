@@ -2,8 +2,8 @@
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { ConnectedProvider, PlatformProvider, useTokenRejected } from "../src/renderer/platform";
-import type { DesktopBridge, PublicDesktopState } from "../src/shared/contracts";
+import { ConnectedProvider, PlatformProvider, useTokenRejected } from "../src/connection";
+import type { Platform, PlatformState } from "../src/platform";
 
 type Auth = { fetchAccessToken: (options: { forceRefreshToken: boolean }) => Promise<unknown> };
 const lifecycle = vi.hoisted(() => ({ events: [] as string[], auth: null as Auth | null }));
@@ -38,22 +38,27 @@ vi.mock("convex/react", () => {
   };
 });
 
-const state: PublicDesktopState = {
+const state: PlatformState = {
   configured: true,
   version: "0.2.0",
   cloudUrl: "https://todo-test.convex.cloud",
-  preferences: { alwaysOnTop: true, allSpaces: true, launchAtLogin: false, shortcut: "" },
 };
-const fetchAccessToken = vi.fn<DesktopBridge["fetchAccessToken"]>();
+const fetchAccessToken = vi.fn<Platform["fetchAccessToken"]>();
+const platform: Platform = {
+  kind: "web",
+  getState: async () => state,
+  onState: () => () => {},
+  login: vi.fn(),
+  cancelLogin: vi.fn(),
+  disconnect: vi.fn(),
+  fetchAccessToken,
+};
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   lifecycle.events = [];
-  Object.assign(window, {
-    desktop: { getState: async () => state, onState: () => () => {}, fetchAccessToken },
-  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -66,7 +71,7 @@ function Rejected() {
 const renderConnected = (children: ReactNode) =>
   act(async () =>
     root.render(
-      <PlatformProvider>
+      <PlatformProvider platform={platform}>
         <ConnectedProvider cloudUrl="https://todo-test.convex.cloud">{children}</ConnectedProvider>
       </PlatformProvider>,
     ),

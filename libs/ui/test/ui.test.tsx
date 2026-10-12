@@ -5,15 +5,16 @@ import { getFunctionName, type FunctionReference, type FunctionReturnType } from
 import { act, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite-plus/test";
-import { DesktopApp } from "../src/renderer/app";
-import type { Completion, List, Recurrence, Settings, Task } from "../src/renderer/data";
-import { useApp } from "../src/renderer/store";
-import type {
-  CreatedIntegrationKey,
-  DesktopBridge,
-  DesktopNavigation,
-  PublicDesktopState,
-} from "../src/shared/contracts";
+import { App } from "../src/app";
+import type { Completion, List, Recurrence, Settings, Task } from "../src/data";
+import {
+  PlatformError,
+  type CreatedIntegrationKey,
+  type DesktopNavigation,
+  type Platform,
+  type PlatformState,
+} from "../src/platform";
+import { useApp } from "../src/store";
 
 type Args = Record<string, unknown>;
 type ApiKey = FunctionReturnType<typeof api.auth.listApiKeys>[number];
@@ -35,7 +36,9 @@ const backend = vi.hoisted(() => {
     auth: { isLoading: false, isAuthenticated: true },
     /** Whether the last token fetch came back empty (device key refused). */
     tokenRejected: false,
-    platform: null as PublicDesktopState | null,
+    platform: null as PlatformState | null,
+    /** The Platform `render` mounted the app on. */
+    shell: null as Platform | null,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -97,15 +100,16 @@ vi.mock("convex/react", () => ({
     );
   },
 }));
-vi.mock("../src/renderer/platform", () => ({
+vi.mock("../src/connection", () => ({
   PlatformProvider: ({ children }: { children: ReactNode }) => children,
   ConnectedProvider: ({ children }: { children: ReactNode }) => children,
   usePlatform: () => {
     useBackend();
     return {
+      platform: backend.shell,
       state: backend.platform,
       error: null,
-      update: (next: PublicDesktopState) => backend.change(() => (backend.platform = next)),
+      update: (next: PlatformState) => backend.change(() => (backend.platform = next)),
       reconnect: () => {},
     };
   },
@@ -385,7 +389,7 @@ backend.queries = {
 };
 const mutation = (name: string) => backend.mutation(name);
 
-const platformState = (fields: Partial<PublicDesktopState> = {}): PublicDesktopState => ({
+const platformState = (fields: Partial<PlatformState> = {}): PlatformState => ({
   configured: true,
   version: "0.2.0",
   cloudUrl: "https://test.convex.cloud",
@@ -399,10 +403,12 @@ const platformState = (fields: Partial<PublicDesktopState> = {}): PublicDesktopS
   ...fields,
 });
 let navigate: (target: DesktopNavigation) => void = () => {};
-function desktopBridge(): DesktopBridge {
+/** The Mac's Platform: every capability, as mocks. */
+function macPlatform(): Required<Platform> {
   return {
+    kind: "mac",
     getState: vi.fn(async () => platformState()),
-    login: vi.fn(() => new Promise<PublicDesktopState>(() => {})),
+    login: vi.fn(() => new Promise<PlatformState>(() => {})),
     cancelLogin: vi.fn(async () => {}),
     createIntegrationKey: vi.fn(() => new Promise<CreatedIntegrationKey>(() => {})),
     copyText: vi.fn(async () => {}),
@@ -419,11 +425,14 @@ function desktopBridge(): DesktopBridge {
   };
 }
 
+let bridge: Required<Platform>;
 let container: HTMLDivElement;
 let root: Root;
 
-async function render() {
-  await act(async () => root.render(<DesktopApp />));
+/** Renders the app on `platform`, the Mac's by default. */
+async function render(platform: Platform = bridge) {
+  backend.shell = platform;
+  await act(async () => root.render(<App platform={platform} />));
   // Lets lists.bootstrap resolve, which gates the workspace.
   await act(async () => {});
 }
@@ -529,7 +538,7 @@ beforeEach(() => {
     sections: {},
     toast: null,
   });
-  Object.assign(window, { desktop: desktopBridge() });
+  bridge = macPlatform();
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -543,8 +552,8 @@ afterEach(async () => {
 describe("Anmeldung und Verbindung", () => {
   it("meldet mit ↵ an, bricht mit esc ohne Fehler ab und zeigt Fehler rot", async () => {
     backend.platform = platformState({ configured: false });
-    const first = Promise.withResolvers<PublicDesktopState>();
-    vi.mocked(window.desktop.login).mockReturnValueOnce(first.promise);
+    const first = Promise.withResolvers<PlatformState>();
+    vi.mocked(bridge.login).mockReturnValueOnce(first.promise);
     await render();
     expect(title()).toBe("todo");
     expect($(".side")).toBeNull();
@@ -552,27 +561,23 @@ describe("Anmeldung und Verbindung", () => {
     expect($(".login p")?.textContent).toBe("Melde dich im Browser mit Shoo an.");
 
     await press("enter");
-    expect(window.desktop.login).toHaveBeenCalledTimes(1);
+    expect(bridge.login).toHaveBeenCalledTimes(1);
     expect($(".login .act")?.textContent).toBe("Warte auf den Browser …");
     expect($(".login small")?.textContent).toBe("esc bricht ab");
     await press("escape");
-    expect(window.desktop.cancelLogin).toHaveBeenCalledTimes(1);
-    expect(window.desktop.hide).not.toHaveBeenCalled();
-    await act(async () =>
-      first.reject(new Error("Error invoking remote method 'desktop:login': Error: abgebrochen")),
-    );
+    expect(bridge.cancelLogin).toHaveBeenCalledTimes(1);
+    expect(bridge.hide).not.toHaveBeenCalled();
+    await act(async () => first.reject(new PlatformError("abgebrochen")));
     expect($(".login .err")).toBeNull();
     expect($(".login .act")?.textContent).toBe("Mit Shoo anmelden↵");
 
-    vi.mocked(window.desktop.login).mockRejectedValueOnce(
-      new Error(
-        "Error invoking remote method 'desktop:login': Error: Die Anmeldung ist abgelaufen.",
-      ),
+    vi.mocked(bridge.login).mockRejectedValueOnce(
+      new PlatformError("Die Anmeldung ist abgelaufen."),
     );
     await press("enter");
     expect($(".login .err")?.textContent).toBe("Die Anmeldung ist abgelaufen.");
 
-    vi.mocked(window.desktop.login).mockResolvedValueOnce(platformState());
+    vi.mocked(bridge.login).mockResolvedValueOnce(platformState());
     await press("enter");
     await act(async () => {});
     expect(title()).toBe("💻work");
@@ -826,7 +831,7 @@ describe("Fenster und Navigation", () => {
     await type("url");
     await press("ctrl+mod+space");
     expect($(".pal .crumb")?.textContent).toBe("Emoji");
-    expect(window.desktop.showEmojiPanel).toHaveBeenCalledTimes(1);
+    expect(bridge.showEmojiPanel).toHaveBeenCalledTimes(1);
     await type("🏖️");
     expect(mutation("lists:update")).toHaveBeenLastCalledWith({
       listId: listIds.urlaub,
@@ -933,11 +938,11 @@ describe("Fenster und Navigation", () => {
     expect(app().panels.map((panel) => panel.type)).toEqual(["actions"]);
     await press("escape");
     expect($(".pal")).toBeNull();
-    expect(window.desktop.hide).not.toHaveBeenCalled();
+    expect(bridge.hide).not.toHaveBeenCalled();
     await press("escape");
-    expect(window.desktop.hide).toHaveBeenCalledTimes(1);
+    expect(bridge.hide).toHaveBeenCalledTimes(1);
     await press("mod+w");
-    expect(window.desktop.hide).toHaveBeenCalledTimes(2);
+    expect(bridge.hide).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -1433,22 +1438,22 @@ describe("Einstellungen", () => {
     expect($(".pal .pi.danger .pt")?.textContent).toBe("Abmelden");
 
     await press("enter");
-    expect(window.desktop.setPreferences).toHaveBeenCalledWith({ alwaysOnTop: false });
+    expect(bridge.setPreferences).toHaveBeenCalledWith({ alwaysOnTop: false });
     await type("kurz");
     await press("enter");
     expect(panelValue("Kurzbefehl")).toBe("Tasten drücken …");
     // ⇧ alone is not enough for a global shortcut: keep listening.
     await press("shift+a");
     expect(panelValue("Kurzbefehl")).toBe("Tasten drücken …");
-    expect(window.desktop.setPreferences).toHaveBeenCalledTimes(1);
+    expect(bridge.setPreferences).toHaveBeenCalledTimes(1);
     await press("alt+mod+k");
-    expect(window.desktop.setPreferences).toHaveBeenLastCalledWith({
+    expect(bridge.setPreferences).toHaveBeenLastCalledWith({
       shortcut: "CommandOrControl+Alt+K",
     });
 
     await type("abmelden");
     await press("enter");
-    expect(window.desktop.disconnect).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it("zeigt vor der Anmeldung nur Fenster und Info", async () => {
@@ -1459,10 +1464,34 @@ describe("Einstellungen", () => {
     expect(panelRows()).not.toContain("Abmelden");
   });
 
+  it("zeigt im Browser nur, was die Plattform kann", async () => {
+    // No window preferences, integration keys or emoji picker.
+    const web: Platform = {
+      kind: "web",
+      getState: bridge.getState,
+      onState: bridge.onState,
+      login: bridge.login,
+      cancelLogin: bridge.cancelLogin,
+      disconnect: bridge.disconnect,
+      fetchAccessToken: bridge.fetchAccessToken,
+    };
+    backend.platform = platformState({ preferences: undefined });
+    await render(web);
+    await press("mod+,");
+    expect(texts(".pal .ps")).toEqual(["Konto", "Schlüssel", "Info"]);
+    expect(panelRows()).not.toContain("Neuer Integrationsschlüssel");
+    expect(panelValue("Dieses Gerät")).toBe("todo auf MacBook Pro");
+
+    await run(() => app().closePanels());
+    await run(() => app().openPanel({ type: "listEmoji", listId: listIds.urlaub }));
+    expect(panelRows()).toContain("Emoji über die Tastatur eingeben");
+    expect(panelRows()).not.toContain("Emoji-Auswahl öffnen");
+  });
+
   it("zeigt einen neuen Integrationsschlüssel genau einmal und kopiert ihn", async () => {
     const secret = "todo_N3wPq8LsYk2RmT7vXc0bJ4eHfU9aD1gQz6WoS5iEx7r";
     const creation = Promise.withResolvers<CreatedIntegrationKey>();
-    vi.mocked(window.desktop.createIntegrationKey).mockReturnValueOnce(creation.promise);
+    vi.mocked(bridge.createIntegrationKey).mockReturnValueOnce(creation.promise);
     await render();
     await press("mod+,");
     await type("neuer");
@@ -1470,14 +1499,14 @@ describe("Einstellungen", () => {
     expect($(".pal .crumb")?.textContent).toBe("Neuer Schlüssel");
     await type("task-capture");
     await press("enter");
-    expect(window.desktop.createIntegrationKey).toHaveBeenCalledWith("task-capture");
+    expect(bridge.createIntegrationKey).toHaveBeenCalledWith("task-capture");
     expect(panelRows()).toEqual(["Warte auf den Browser …", "Abbrechen"]);
     await act(async () =>
       creation.resolve({ id: "k-new", name: "task-capture", prefix: "todo_N3wPq8Ls", key: secret }),
     );
     expect($(".pal .secret")?.textContent).toBe(secret);
     await press("mod+c");
-    expect(window.desktop.copyText).toHaveBeenCalledWith(secret);
+    expect(bridge.copyText).toHaveBeenCalledWith(secret);
     expect(panelRows()).toEqual(["Kopiert", "Fertig"]);
     await press("escape");
     expect(app().panels).toEqual([{ type: "settings" }]);
@@ -1486,7 +1515,7 @@ describe("Einstellungen", () => {
 
   it("widerruft einen Schlüssel, der zu spät nach dem Abbrechen kommt", async () => {
     const creation = Promise.withResolvers<CreatedIntegrationKey>();
-    vi.mocked(window.desktop.createIntegrationKey).mockReturnValueOnce(creation.promise);
+    vi.mocked(bridge.createIntegrationKey).mockReturnValueOnce(creation.promise);
     await render();
     await press("mod+,");
     await type("neuer");
@@ -1494,7 +1523,7 @@ describe("Einstellungen", () => {
     await type("Raycast");
     await press("enter");
     await press("escape");
-    expect(window.desktop.cancelLogin).toHaveBeenCalledTimes(1);
+    expect(bridge.cancelLogin).toHaveBeenCalledTimes(1);
     expect(app().panels).toEqual([{ type: "settings" }]);
     await act(async () =>
       creation.resolve({ id: "k-late", name: "Raycast", prefix: "todo_late", key: "todo_late" }),

@@ -13,9 +13,10 @@ import {
   type SyncStatus,
 } from "./data";
 import { useGlobalKeys, useWorkspaceKeys } from "./keymap";
-import { LoadFailedView, LoginView, OfflineView, PlatformError } from "./login";
+import { LoadFailedView, LoginView, OfflineView, PlatformErrorView } from "./login";
 import { PanelHost } from "./panels";
-import { ConnectedProvider, PlatformProvider, usePlatform, useTokenRejected } from "./platform";
+import { ConnectedProvider, PlatformProvider, usePlatform, useTokenRejected } from "./connection";
+import type { Platform } from "./platform";
 import { selectedTask, useApp } from "./store";
 import { TaskActionsProvider, useTaskActions } from "./task-actions";
 import { Toast } from "./toast";
@@ -26,9 +27,10 @@ import { ImportantView } from "./views/important";
 import { ListView } from "./views/list";
 import { RecurrencesView } from "./views/recurrences";
 
-export function DesktopApp() {
+/** The whole app on top of the shell's Platform; `renderApp` mounts it. */
+export function App({ platform }: { platform: Platform }) {
   return (
-    <PlatformProvider>
+    <PlatformProvider platform={platform}>
       <AppFrame />
     </PlatformProvider>
   );
@@ -49,7 +51,7 @@ function AppFrame() {
   if (error)
     content = (
       <Frame title="todo">
-        <PlatformError message={error} />
+        <PlatformErrorView message={error} />
       </Frame>
     );
   else if (!state) content = <Frame />;
@@ -133,7 +135,7 @@ function Authenticated({ reconnect, login }: { reconnect: () => void; login: () 
   if (!isAuthenticated)
     return (
       <Frame title="todo" status={<StatusDot force="off" />}>
-        {/* A refused device key needs a new login (the main process explains why); anything
+        {/* A refused device key needs a new login (the shell explains why); anything
             else, like no network, may pass with a new client. */}
         {rejected ? (
           <LoginView onConnected={reconnect} />

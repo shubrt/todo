@@ -1,7 +1,11 @@
 import { Component, type ReactNode } from "react";
+import type { Platform } from "./platform";
 
 /** Last resort for a render crash: reload, or sign out and reload. */
-export class DesktopErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+export class ErrorBoundary extends Component<
+  { platform: Platform; children: ReactNode },
+  { failed: boolean }
+> {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
@@ -19,12 +23,12 @@ export class DesktopErrorBoundary extends Component<{ children: ReactNode }, { f
               Der gespeicherte Stand bleibt erhalten. Die Verbindung kann abgelaufen sein.
             </small>
             <button className="act" onClick={() => window.location.reload()}>
-              Fenster neu laden
+              {this.props.platform.kind === "mac" ? "Fenster neu laden" : "Seite neu laden"}
             </button>
             <button
               className="link"
               onClick={() => {
-                void window.desktop.disconnect().then(() => window.location.reload());
+                void this.props.platform.disconnect().then(() => window.location.reload());
               }}
             >
               Abmelden und neu anmelden

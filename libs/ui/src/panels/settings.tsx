@@ -2,12 +2,12 @@ import { api } from "@todo/backend/api";
 import { useMutation, useQuery } from "convex/react";
 import { Key, Plus } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
-import type { DesktopPreferences } from "../../shared/contracts";
+import { usePlatform } from "../connection";
 import { useLists, useSettings, useWrite } from "../data";
 import { localDate, shortDate } from "../dates";
-import { ipcErrorMessage } from "../errors";
+import { platformErrorMessage } from "../errors";
 import { matches } from "../keymap";
-import { usePlatform } from "../platform";
+import type { DesktopPreferences, Platform } from "../platform";
 import { useApp } from "../store";
 import { Keycaps, ListMark } from "../ui";
 import { applicable, backThen, closeThen, Panel, type PanelItem, type PanelSection } from "./panel";
@@ -20,22 +20,26 @@ const keyLimit = 30;
 
 const push = (panel: PanelEntry) => () => useApp.getState().openPanel(panel);
 
+/** How settings name the device the app runs on. */
+const thisDevice: Record<Platform["kind"], string> = { mac: "Dieser Mac", web: "Dieses Gerät" };
+
 /**
  * ⌘, and the sidebar icon. Signed in (`account`), it adds Konto, Schlüssel and the key info;
- * before that only Fenster, Info and Abmelden (if a key is stored), without Convex hooks.
+ * before that only Fenster (Mac), Info and Abmelden (if a key is stored), without Convex hooks.
  */
 export function SettingsPanel({ account }: { account: boolean }) {
   return account ? <AccountSettings /> : <Settings />;
 }
 
 function AccountSettings() {
+  const { platform } = usePlatform();
   const settings = useSettings();
   const lists = useLists();
   const keys = useQuery(api.auth.listApiKeys, {});
   const revoke = useMutation(api.auth.revokeApiKey);
   const write = useWrite();
   const defaultList = lists?.find((list) => list._id === settings?.defaultListId);
-  // This Mac's key only goes away with Abmelden.
+  // This device's key only goes away with Abmelden.
   const others = keys?.filter((key) => !key.current) ?? [];
   const full = (keys?.length ?? 0) >= keyLimit;
   const since = (createdAt: number) => {
@@ -74,13 +78,15 @@ function AccountSettings() {
           id: "keys",
           label: "Schlüssel",
           items: [
-            {
-              id: "new-key",
-              icon: <Plus size={15} />,
-              label: "Neuer Integrationsschlüssel",
-              dim: full,
-              run: full ? undefined : push({ type: "newKey" }),
-            },
+            ...applicable([
+              platform.createIntegrationKey && {
+                id: "new-key",
+                icon: <Plus size={15} />,
+                label: "Neuer Integrationsschlüssel",
+                dim: full,
+                run: full ? undefined : push({ type: "newKey" }),
+              },
+            ]),
             ...others.map(
               (key): PanelItem => ({
                 id: `key:${key.id}`,
@@ -100,7 +106,7 @@ function AccountSettings() {
       info={[
         {
           id: "device",
-          label: "Dieser Mac",
+          label: thisDevice[platform.kind],
           value: keys?.find((key) => key.current)?.name,
           info: true,
         },
@@ -128,8 +134,9 @@ const toggles: { key: keyof Omit<DesktopPreferences, "shortcut">; label: string 
 ];
 
 /**
- * The panel itself: Fenster, then `sections`, then Info (with `info` rows) and Abmelden on its
- * own. Kurzbefehl records the next key combination; esc cancels the recording.
+ * The panel itself: Fenster (only with window preferences, i.e. on the Mac), then `sections`,
+ * then Info (with `info` rows) and Abmelden on its own. Kurzbefehl records the next key
+ * combination; esc cancels the recording.
  */
 function Settings({
   sections = [],
@@ -140,15 +147,16 @@ function Settings({
   info?: PanelItem[];
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement>, highlighted?: PanelItem) => boolean;
 }) {
-  const { state, update } = usePlatform();
+  const { platform, state, update } = usePlatform();
   const [recording, setRecording] = useState(false);
   if (!state) return null;
+  const { preferences } = state;
   const fail = (cause: unknown) =>
     useApp
       .getState()
-      .showError(ipcErrorMessage(cause, "Die Einstellung konnte nicht übernommen werden."));
+      .showError(platformErrorMessage(cause, "Die Einstellung konnte nicht übernommen werden."));
   const setPreferences = (patch: Partial<DesktopPreferences>) =>
-    void window.desktop.setPreferences(patch).then(update, fail);
+    void platform.setPreferences?.(patch).then(update, fail);
 
   function record(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") return setRecording(false);
@@ -157,7 +165,7 @@ function Settings({
     if (!shortcut) return;
     setRecording(false);
     // "Shift+CommandOrControl+Space" is the saved "CommandOrControl+Shift+Space": no change.
-    if (state && acceleratorLabel(shortcut) !== acceleratorLabel(state.preferences.shortcut))
+    if (preferences && acceleratorLabel(shortcut) !== acceleratorLabel(preferences.shortcut))
       setPreferences({ shortcut });
   }
 
@@ -166,25 +174,29 @@ function Settings({
       compact
       placeholder="Einstellung suchen …"
       sections={[
-        {
-          id: "window",
-          label: "Fenster",
-          items: [
-            ...toggles.map(({ key, label }) => ({
-              id: key,
-              label,
-              value: state.preferences[key] ? "An" : "Aus",
-              run: () => setPreferences({ [key]: !state.preferences[key] }),
-            })),
-            {
-              id: "shortcut",
-              label: "Kurzbefehl",
-              keywords: "tastenkürzel global",
-              value: recording ? "Tasten drücken …" : acceleratorLabel(state.preferences.shortcut),
-              run: () => setRecording(true),
-            },
-          ],
-        },
+        ...(preferences && platform.setPreferences
+          ? [
+              {
+                id: "window",
+                label: "Fenster",
+                items: [
+                  ...toggles.map(({ key, label }) => ({
+                    id: key,
+                    label,
+                    value: preferences[key] ? "An" : "Aus",
+                    run: () => setPreferences({ [key]: !preferences[key] }),
+                  })),
+                  {
+                    id: "shortcut",
+                    label: "Kurzbefehl",
+                    keywords: "tastenkürzel global",
+                    value: recording ? "Tasten drücken …" : acceleratorLabel(preferences.shortcut),
+                    run: () => setRecording(true),
+                  },
+                ],
+              },
+            ]
+          : []),
         ...sections,
         {
           id: "info",
@@ -207,12 +219,12 @@ function Settings({
               id: "logout",
               label: "Abmelden",
               tone: "danger",
-              run: closeThen(() => window.desktop.disconnect().then(update, fail)),
+              run: closeThen(() => platform.disconnect().then(update, fail)),
             },
           ]),
         },
       ]}
-      // The main process reports here what failed at startup (a taken shortcut, an unreadable
+      // The shell reports here what failed at startup (a taken shortcut, an unreadable
       // connection); a refused new recording goes to the error toast through `fail`.
       hint={recording ? "esc bricht ab" : state.error && <span className="err">{state.error}</span>}
       onKeyDown={(event, highlighted) => {
@@ -321,10 +333,11 @@ export function DefaultListPanel() {
 }
 
 /**
- * Zeitzone: the empty search shows the account's zone and this Mac's; typing searches all
+ * Zeitzone: the empty search shows the account's zone and this device's; typing searches all
  * IANA zones by their current names (Europe/Kyiv, not Europe/Kiev) with today's UTC offset.
  */
 export function TimeZonePanel() {
+  const { platform } = usePlatform();
   const settings = useSettings();
   const update = useMutation(api.settings.update);
   const write = useWrite();
@@ -334,7 +347,7 @@ export function TimeZonePanel() {
   const system = systemTimeZone();
   const zones = query.trim() ? searchTimeZones(query, saved) : [...new Set([saved, system])];
   const note = (zone: string) =>
-    zone === saved ? "aktuell · " : zone === system ? "Dieser Mac · " : "";
+    zone === saved ? "aktuell · " : zone === system ? `${thisDevice[platform.kind]} · ` : "";
   return (
     <Panel
       crumb="Zeitzone"

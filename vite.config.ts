@@ -18,6 +18,7 @@ export default defineConfig({
             "apps/*/test/**/*.test.{ts,tsx}",
             "libs/logging/test/**/*.test.ts",
             "libs/native-client/test/**/*.test.ts",
+            "libs/ui/test/**/*.test.{ts,tsx}",
           ],
         },
       },

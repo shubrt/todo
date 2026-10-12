@@ -1,3 +1,5 @@
+import { PlatformError } from "./platform";
+
 /** The German message of a ConvexError({ code, message }), else `fallback`. */
 export function safeError(
   cause: unknown,
@@ -9,9 +11,7 @@ export function safeError(
   return fallback;
 }
 
-/** Electron prefixes errors thrown in IPC handlers; the rest is the main process's German message. */
-export function ipcErrorMessage(cause: unknown, fallback: string) {
-  const message = cause instanceof Error ? cause.message : "";
-  const match = /^Error invoking remote method '[^']*': (?:\w*Error: )?([\s\S]+)$/.exec(message);
-  return match?.[1] ?? fallback;
+/** The message of a PlatformError (German, meant for the user), else `fallback`. */
+export function platformErrorMessage(cause: unknown, fallback: string) {
+  return cause instanceof PlatformError ? cause.message : fallback;
 }

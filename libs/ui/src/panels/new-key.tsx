@@ -3,8 +3,9 @@ import type { Id } from "@todo/backend/dataModel";
 import { useMutation } from "convex/react";
 import { Check, ClipboardCheck, Copy, LogIn, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { CreatedIntegrationKey } from "../../shared/contracts";
-import { ipcErrorMessage } from "../errors";
+import { usePlatform } from "../connection";
+import { platformErrorMessage } from "../errors";
+import type { CreatedIntegrationKey } from "../platform";
 import { useApp } from "../store";
 import { Panel, type PanelItem } from "./panel";
 
@@ -21,6 +22,7 @@ const icon = 15;
  * the browser is open cancels the login, and a key that still arrives is revoked.
  */
 export function NewKeyPanel() {
+  const { platform } = usePlatform();
   const revoke = useMutation(api.auth.revokeApiKey);
   const [name, setName] = useState("");
   const [step, setStep] = useState<Step>({ type: "name" });
@@ -30,19 +32,19 @@ export function NewKeyPanel() {
   useEffect(
     () => () => {
       attempt.current++;
-      if (waiting.current) void window.desktop.cancelLogin();
+      if (waiting.current) void platform.cancelLogin();
     },
-    [],
+    [platform],
   );
 
   async function create() {
     const trimmed = name.trim();
-    if (!trimmed || waiting.current) return;
+    if (!trimmed || waiting.current || !platform.createIntegrationKey) return;
     const current = ++attempt.current;
     waiting.current = true;
     setStep({ type: "waiting" });
     try {
-      const key = await window.desktop.createIntegrationKey(trimmed);
+      const key = await platform.createIntegrationKey(trimmed);
       if (current !== attempt.current) {
         // Cancelled after the browser came back: nobody saw this key, so it must not stay active.
         void revoke({ id: key.id as Id<"apiKeys"> }).catch(() => {});
@@ -53,7 +55,7 @@ export function NewKeyPanel() {
       if (current !== attempt.current) return;
       useApp
         .getState()
-        .showError(ipcErrorMessage(cause, "Der Schlüssel konnte nicht erstellt werden."));
+        .showError(platformErrorMessage(cause, "Der Schlüssel konnte nicht erstellt werden."));
       setStep({ type: "name" });
     } finally {
       if (current === attempt.current) waiting.current = false;
@@ -61,8 +63,9 @@ export function NewKeyPanel() {
   }
 
   async function copy(created: CreatedIntegrationKey) {
+    if (!platform.copyText) return;
     try {
-      await window.desktop.copyText(created.key);
+      await platform.copyText(created.key);
       setStep({ type: "created", key: created, copied: true });
     } catch {
       useApp.getState().showError("Der Schlüssel konnte nicht kopiert werden.");

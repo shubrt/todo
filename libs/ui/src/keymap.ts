@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
+import { usePlatform } from "./connection";
 import { favoritesOf, type List, type Settings } from "./data";
 import { useApp } from "./store";
 import { abilities, useTaskActions, type TaskActions } from "./task-actions";
@@ -79,9 +80,11 @@ function isTextField(target: EventTarget | null) {
 /**
  * Window-wide keys, active in every state (also before sign-in): Escape closes the topmost
  * panel or else hides the window (an edit field or panel handles its own Escape first and
- * prevents the default), ⌘W hides, ⌘, opens settings. Also routes tray navigation.
+ * prevents the default), ⌘W hides, ⌘, opens settings. Also routes tray navigation. Hiding
+ * and the tray exist only where the platform has them (the Mac).
  */
 export function useGlobalKeys() {
+  const { platform } = usePlatform();
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -92,10 +95,10 @@ export function useGlobalKeys() {
         // Editing without focus in the field (e.g. after a click elsewhere): just stop editing.
         if (state.editing) state.edit(null);
         else if (state.panels.length) state.closePanel();
-        else void window.desktop?.hide();
+        else void platform.hide?.();
       } else if (combo === "mod+w") {
         event.preventDefault();
-        void window.desktop?.hide();
+        void platform.hide?.();
       } else if (combo === "mod+,") {
         event.preventDefault();
         // Settings replaces any other panel; its pickers (Zeitzone, …) stay open on top of it.
@@ -106,7 +109,7 @@ export function useGlobalKeys() {
       }
     };
     document.addEventListener("keydown", onKeyDown);
-    const stop = window.desktop?.onNavigate((target) => {
+    const stop = platform.onNavigate?.((target) => {
       const state = useApp.getState();
       if (target === "switcher" || target === "settings") {
         state.closePanels();
@@ -117,7 +120,7 @@ export function useGlobalKeys() {
       document.removeEventListener("keydown", onKeyDown);
       stop?.();
     };
-  }, []);
+  }, [platform]);
 }
 
 type WorkspaceContext = {

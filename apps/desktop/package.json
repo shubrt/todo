@@ -12,24 +12,18 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "@todo/backend": "workspace:*",
     "@todo/native-client": "workspace:*",
-    "convex": "catalog:",
-    "lucide-react": "1.41.0",
+    "@todo/ui": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "zustand": "5.0.15"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@electron/packager": "20.3.0",
     "@todo/tsconfig": "workspace:*",
     "@types/node": "catalog:",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "6.1.1",
     "electron": "44.2.0",
     "esbuild": "0.28.2",
-    "happy-dom": "20.14.0",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   }

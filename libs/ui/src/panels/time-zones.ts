@@ -55,5 +55,5 @@ export function utcOffset(timeZone: string) {
   return name?.replace("GMT", "UTC") ?? "";
 }
 
-/** This Mac's zone, by its current name. */
+/** This device's zone, by its current name. */
 export const systemTimeZone = () => currentName(Intl.DateTimeFormat().resolvedOptions().timeZone);

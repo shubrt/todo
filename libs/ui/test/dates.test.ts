@@ -17,7 +17,7 @@ import {
   weekdayDate,
   weekdayLabel,
   zonedTime,
-} from "../src/renderer/dates";
+} from "../src/dates";
 
 // A Thursday, like the approved mocks.
 const today = "2026-10-08";

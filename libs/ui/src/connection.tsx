@@ -1,29 +1,39 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
-import type { PublicDesktopState } from "../shared/contracts";
+import type { Platform, PlatformState } from "./platform";
 
-type PlatformState = {
-  state: PublicDesktopState | null;
+type PlatformContextValue = {
+  platform: Platform;
+  state: PlatformState | null;
   error: string | null;
-  update: (value: PublicDesktopState) => void;
+  update: (value: PlatformState) => void;
   reconnect: () => void;
 };
-const PlatformContext = createContext<PlatformState | null>(null);
+const PlatformContext = createContext<PlatformContextValue | null>(null);
 
-export function PlatformProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<PublicDesktopState | null>(null);
+/** Message when the first getState fails: the window or page could not reach its shell. */
+const unreachable: Record<Platform["kind"], string> = {
+  mac: "Das Fenster konnte nicht verbunden werden. Starte todo erneut.",
+  web: "todo konnte nicht geladen werden. Lade die Seite neu.",
+};
+
+/** Holds the shell's Platform and its live state for everything below it. */
+export function PlatformProvider({
+  platform,
+  children,
+}: {
+  platform: Platform;
+  children: ReactNode;
+}) {
+  const [state, setState] = useState<PlatformState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true;
-    if (!window.desktop) {
-      setError("Öffne todo als Desktop-App, um deine Aufgaben zu verbinden.");
-      return;
-    }
-    const unsubscribe = window.desktop.onState((next) => {
+    const unsubscribe = platform.onState((next) => {
       if (active) setState(next);
     });
-    void window.desktop
+    void platform
       .getState()
       .then((next) => {
         if (active) {
@@ -32,16 +42,22 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
         }
       })
       .catch(() => {
-        if (active) setError("Das Fenster konnte nicht verbunden werden. Starte todo erneut.");
+        if (active) setError(unreachable[platform.kind]);
       });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [retry]);
+  }, [platform, retry]);
   return (
     <PlatformContext.Provider
-      value={{ state, error, update: setState, reconnect: () => setRetry((value) => value + 1) }}
+      value={{
+        platform,
+        state,
+        error,
+        update: setState,
+        reconnect: () => setRetry((value) => value + 1),
+      }}
     >
       {children}
     </PlatformContext.Provider>
@@ -50,7 +66,7 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
 
 export function usePlatform() {
   const context = useContext(PlatformContext);
-  if (!context) throw new Error("Desktop-Provider fehlt.");
+  if (!context) throw new Error("Platform-Provider fehlt.");
   return context;
 }
 
@@ -61,7 +77,7 @@ const TokenRejectedContext = createContext<{
 } | null>(null);
 
 /**
- * Whether the main process refused the device key on the last token fetch (no token, as
+ * Whether the shell refused the device key on the last token fetch (no token, as
  * opposed to an unreachable server). Signed out for that reason, the window asks for a new
  * login; for any other failure it offers to reconnect.
  */
@@ -70,12 +86,12 @@ export function useTokenRejected() {
 }
 
 function useDeviceAuth() {
-  const { state } = usePlatform();
+  const { platform, state } = usePlatform();
   const setRejected = useContext(TokenRejectedContext)?.setRejected;
   const fetchAccessToken = useCallback(
     async (options: { forceRefreshToken: boolean }) => {
       try {
-        const token = await window.desktop.fetchAccessToken(options);
+        const token = await platform.fetchAccessToken(options);
         setRejected?.(token === null);
         return token;
       } catch {
@@ -84,7 +100,7 @@ function useDeviceAuth() {
         return null;
       }
     },
-    [setRejected],
+    [platform, setRejected],
   );
   return { isLoading: !state, isAuthenticated: Boolean(state?.configured), fetchAccessToken };
 }
