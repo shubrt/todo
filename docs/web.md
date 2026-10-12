@@ -143,20 +143,21 @@ Im Docker-Build fehlt `.git`, ohne Railway-Variable gilt dort die Bauzeit. Der D
 
 Die App läuft auf Railway im Projekt "task", Service `web`, unter der eigenen Domain <https://task.shubrt.me>. Railway ist mit dem GitHub-Repository verbunden und baut neu, sobald sich `main` ändert. Einen Deploy-Befehl gibt es nicht, der Merge nach `main` ist der Deploy.
 
-`railway.json` im Repository-Root legt den Build fest:
+Die Build-Einstellungen stehen im Dienst, nicht im Repository. Railway hat `railway.json` abgekündigt, die Datei wirkt nur bis zum 1. Dezember 2026.
 
-- Railway baut mit `apps/web/Dockerfile`, Build-Kontext ist das ganze Repository.
-- Nur Änderungen unter `apps/web`, `libs` und `tools/typescript` sowie an `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `railway.json` und `.dockerignore` lösen einen Build aus. Reine Mac- oder Doku-Änderungen nicht.
+- Die Dienstvariable `RAILWAY_DOCKERFILE_PATH` lässt Railway mit `apps/web/Dockerfile` bauen. Build-Kontext ist das ganze Repository.
+- Die Watch-Patterns des Dienstes lassen nur Änderungen unter `apps/web`, `libs` und `tools/typescript` sowie an `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` und `.dockerignore` einen Build auslösen. Reine Mac- oder Doku-Änderungen nicht.
 - Der Healthcheck fragt `/`. Bei Fehlern startet Railway den Dienst bis zu zehnmal neu.
 
 Das Dockerfile baut in zwei Stufen. Die erste nutzt `node:24`. Mit `node:24-slim` bricht Vite+ ab, weil dort die CA-Zertifikate fehlen. Corepack holt pnpm in der Version aus `packageManager`, `pnpm install --frozen-lockfile --filter @todo/web...` installiert nur die Web-App mit ihren Paketen, ohne Electron. `pnpm --filter @todo/web build` baut nach `apps/web/dist`. Die zweite Stufe ist `caddy:2-alpine` mit `apps/web/Caddyfile` und den gebauten Dateien in `/srv`. `.dockerignore` hält `.git`, `node_modules`, Builds und alle `.env*`-Dateien außer `.env.example` aus dem Build.
 
 Service-Variablen in Railway:
 
-| Variable          | Inhalt                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| `PORT`            | `8080`, darauf lauscht Caddy                                                                                   |
-| `CONVEX_SITE_URL` | Site-URL des Produktionsbackends wie in `.env`. Der Build kompiliert sie in App und CSP und bricht ohne sie ab |
+| Variable                  | Inhalt                                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `PORT`                    | `8080`, darauf lauscht Caddy                                                                                   |
+| `CONVEX_SITE_URL`         | Site-URL des Produktionsbackends wie in `.env`. Der Build kompiliert sie in App und CSP und bricht ohne sie ab |
+| `RAILWAY_DOCKERFILE_PATH` | `apps/web/Dockerfile`                                                                                          |
 
 `RAILWAY_GIT_COMMIT_SHA` setzt Railway selbst. Das Dockerfile nimmt `CONVEX_SITE_URL` und `RAILWAY_GIT_COMMIT_SHA` als `ARG` in den Build.
 

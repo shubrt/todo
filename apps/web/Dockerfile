@@ -1,4 +1,4 @@
-# The web app for Railway (see railway.json): builds apps/web from the repository root and
+# The web app for Railway (service settings: docs/web.md#hosting): builds apps/web from the repository root and
 # serves the static files with Caddy. CONVEX_SITE_URL is a Railway service variable; the build
 # compiles it into the app and its CSP and fails without it.
 FROM node:24 AS build
