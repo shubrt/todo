@@ -5,11 +5,13 @@ und `work`, jede mit den Abschnitten Tasks und Backlog. Dazu kommen die Liste
 Habits für tägliche Gewohnheiten, Wichtig mit dringenden Aufgaben aus allen
 Listen und der Verlauf erledigter Arbeit für die separate Zeitbuchung.
 
-Der einzige Client ist eine Electron-App für macOS, ein kleines schwebendes
-Fenster über anderen Apps, das sich ganz mit der Tastatur bedienen lässt.
-Convex speichert und synchronisiert die Aufgaben, führt Tageswechsel aus und
-stellt eine HTTP-API für Agenten und Raycast bereit.
-Angemeldet wird über Shoo im Browser. Das Backend lässt nur den ausdrücklich
+Es gibt zwei Clients mit derselben Oberfläche. Die Electron-App für macOS ist
+ein kleines schwebendes Fenster über anderen Apps, das sich ganz mit der
+Tastatur bedienen lässt. Die Web-App unter <https://task.shubrt.me> ist für das
+iPhone gedacht. Man fügt sie in Safari zum Home-Bildschirm hinzu und bedient
+sie mit dem Finger. Convex speichert und synchronisiert die Aufgaben, führt
+Tageswechsel aus und stellt eine HTTP-API für Agenten und Raycast bereit.
+Beide Apps melden sich über Shoo an. Das Backend lässt nur den ausdrücklich
 konfigurierten Besitzer zu.
 
 ## Starten
@@ -21,11 +23,15 @@ und Paketversionen sind im Workspace festgelegt.
 vp install
 cp .env.example .env
 vp run dev
+vp run dev:web
 ```
 
-In `.env` gehört nur `CONVEX_SITE_URL`. Der Build kompiliert den Wert in die
-App, ohne ihn schlägt die Anmeldung fehl. `dev` startet pro Worktree eine
-eigene Variante der App. Vor dem Löschen eines Worktrees in seiner Variante
+`dev` startet die Mac-App, `dev:web` die Web-App im Vite-Dev-Server. In `.env`
+gehört nur `CONVEX_SITE_URL`. Beide Builds kompilieren den Wert in die App.
+Ohne ihn schlägt die Anmeldung am Mac fehl, und die Web-App baut gar nicht.
+Anmelden kann sich die lokale Web-App nicht, das geht nur unter
+`task.shubrt.me`, siehe [Web-App](docs/web.md#entwicklung). `dev` startet pro
+Worktree eine eigene Variante der App. Vor dem Löschen eines Worktrees in seiner Variante
 unter Einstellungen "Abmelden" wählen. Einen vergessenen Geräteschlüssel
 widerruft man später unter Einstellungen > Schlüssel, siehe
 [Desktop](docs/desktop.md#schlüssel). Wie das Backend
@@ -38,22 +44,27 @@ legt automatisch ein Cloudprojekt an oder veröffentlicht etwas.
 vp run codegen
 vp run qa
 vp run build
+vp run build:web
 vp run package
 ```
 
 `qa` umfasst Formatierung, Lint, Workspace-Regeln, TypeScript und isolierte
-Verhaltenstests. Die Tests verwenden keine persönlichen Cloud-Daten. `package`
-legt die unsignierte macOS-App unter `apps/desktop/release/` ab.
+Verhaltenstests. Die Tests verwenden keine persönlichen Cloud-Daten. `build`
+baut die Mac-App, `build:web` die Web-App nach `apps/web/dist`. `package` legt
+die unsignierte macOS-App unter `apps/desktop/release/` ab.
 
 `vp run install:mac` baut und prüft den aktuellen Stand von `main` und
 installiert ihn als `/Applications/todo.app`,
 siehe [Desktop](docs/desktop.md#auf-diesem-mac-installieren-und-aktualisieren).
+Die Web-App veröffentlicht Railway nach jedem Merge nach `main`, der sie
+betrifft, von selbst, siehe [Hosting](docs/web.md#hosting).
 
 ## Dokumentation
 
 - [Produktregeln und dokumentierte Entscheidungen](docs/product-concept.md)
 - [Architektur und Sicherheitsgrenzen](docs/architecture.md)
 - [macOS-App, Anmeldung, Schlüssel und Bedienung](docs/desktop.md)
+- [iPhone-Web-App, Anmeldung, Bedienung und Hosting](docs/web.md)
 - [HTTP-API und Beispiele](docs/api.md)
 - [Entwicklung, Backend-Einrichtung und Umstellung auf Listen](docs/development.md)
 - [Prüfergebnisse und offene Betriebsabnahme](docs/verification.md)
