@@ -61,17 +61,18 @@ Die Oberfläche gleicht der am Mac, siehe [Bedienung](desktop.md#bedienung). Auf
 
 - Die Titelleiste ist 40 Punkt hoch, sitzt unter der Statusleiste und hat keine Ampelknöpfe. Ein Tipp auf den Titel mit dem kleinen Pfeil öffnet die Listensuche, die am Mac `⌘P` öffnet.
 - Der Statuspunkt hat keinen Hover. Ein Tipp zeigt seine Blase zwei Sekunden lang.
-- Die Seitenleiste ist 48 Punkt breit. Die Favoriten stehen oben im Abstand von 44 Punkt, unten sitzt `+` direkt über dem Zahnrad der Einstellungen.
-- `+` legt wie `⌘N` eine Aufgabe oben in Tasks der offenen Liste an, in Habits einen Habit. Aus Wichtig, Verlauf und Wiederholungen wechselt es vorher in die Standardliste.
+- Die Seitenleiste ist 48 Punkt breit. Die Favoriten stehen oben im Abstand von 44 Punkt, unten sitzt das Zahnrad der Einstellungen.
+- Unten rechts schwebt über der Liste ein weißer runder Knopf mit schwarzem `+`, 56 Punkt groß und 16 Punkt vom Rand und vom Home-Indikator entfernt. Er legt wie `⌘N` eine Aufgabe oben in Tasks der offenen Liste an, in Habits einen Habit. Aus Wichtig, Verlauf und Wiederholungen wechselt er vorher in die Standardliste. Die Tastatur öffnet sich sofort, auch wenn die Standardliste noch lädt.
+- Während einer Bearbeitung und bei offenem Blatt fehlt der Knopf. Unter der letzten Zeile bleibt so viel Platz, dass sie sich über den Knopf hinaus scrollen lässt.
 - Zeilen sind 36 Punkt hoch. Die Checkbox bleibt 14 Punkt groß, ihre Trefferfläche ist 44 Punkt breit und so hoch wie die Zeile.
 - Beim Öffnen einer Liste ist nichts ausgewählt. Die Auswahl ist nur zu sehen, solange ein Blatt oder eine Bearbeitung offen ist.
 
 ### Tippen
 
 - Die Checkbox erledigt eine Aufgabe oder öffnet sie wieder. Die Subtask-Zahl wie `0/5` klappt die Subtasks auf und zu.
-- Ein Tipp auf eine Aufgabe, einen Habit oder eine Wiederholung wählt die Zeile aus und öffnet ihre Aktionen als Blatt. Oben steht ihr Titel statt eines Suchfelds, Tastenkürzel fehlen.
-- Ein Tipp, der nur eine Bearbeitung beendet, öffnet nichts.
-- "Titel bearbeiten" macht den Titel zum Eingabefeld. "Fertig" auf der Tastatur speichert wie `↵`.
+- Ein Tipp auf eine Aufgabe, einen Habit oder eine Wiederholung macht ihren Titel zum Eingabefeld, wie am Mac `↵` oder ein Doppelklick. Die Tastatur öffnet sich sofort. "Fertig" auf der Tastatur speichert wie `↵`.
+- Ein Tipp auf eine andere Zeile speichert den Titel in Arbeit und bearbeitet dann die getippte Zeile. Ein Tipp auf die Zeile, die gerade bearbeitet wird, startet weder eine neue Bearbeitung noch ein Blatt.
+- Erledigte Einträge im Verlauf reagieren weder auf Tippen noch auf langen Druck.
 - Verwerfen wirkt wie am Mac sofort und ohne Rückfrage.
 - Wischaktionen auf Zeilen und Kontextmenüs gibt es nicht.
 
@@ -85,10 +86,17 @@ Panels erscheinen als Blatt am unteren Rand über dem Home-Indikator, so breit w
 
 ### Langer Druck und Ziehen
 
-Ein langer Druck dauert 450 ms, der Finger darf sich dabei höchstens 8 Punkt bewegen. Wer sich vorher weiter bewegt, scrollt.
+Ein langer Druck dauert 450 ms, der Finger darf sich dabei höchstens 8 Punkt bewegen. Wer sich vorher weiter bewegt, scrollt. Dann hebt sich nichts, und nichts öffnet sich.
 
-- Auf einem Emoji der Seitenleiste öffnet er die Listenaktionen und ersetzt ein offenes Panel. In der Listensuche öffnet er sie über der Suche.
-- Auf einer Aufgabe hebt er die Zeile an. Der Finger schiebt sie, die übrigen Zeilen weichen aus, und Loslassen speichert die neue Stelle. Am oberen und unteren Rand der Liste scrollt sie beim Ziehen mit.
+Auf einem Emoji der Seitenleiste öffnet er die Listenaktionen und ersetzt ein offenes Panel. In der Listensuche öffnet er sie über der Suche.
+
+Auf einer Aufgabe, einem Habit oder einer Wiederholung hebt er nur die Zeile an. Was dann geschieht, entscheidet der Finger:
+
+- Loslassen ohne weitere Bewegung wählt die Zeile aus und öffnet ihre Aktionen als Blatt. Oben steht ihr Titel statt eines Suchfelds, Tastenkürzel fehlen. Einen Titel in Arbeit speichert die App vorher.
+- Bewegt sich der Finger weiter als 8 Punkt, zieht er die Zeile. Die übrigen Zeilen weichen aus, Loslassen speichert die neue Stelle, und kein Blatt öffnet sich. Am oberen und unteren Rand der Liste scrollt sie beim Ziehen mit.
+- Lässt sich die Zeile nicht ziehen, legt sie sich bei dieser Bewegung zurück, und nichts öffnet sich.
+
+Den Klick, den iOS nach dem Loslassen schicken kann, verwirft die App. Er startet keine Bearbeitung und schließt kein Blatt.
 
 Für das Ziehen gelten dieselben Grenzen wie für `⌥↑` und `⌥↓`:
 
@@ -97,9 +105,9 @@ Für das Ziehen gelten dieselben Grenzen wie für `⌥↑` und `⌥↓`:
 - Subtasks bleiben bei ihrer Hauptaufgabe. Aufgeklappte Subtasks wandern mit ihrer Hauptaufgabe.
 - In Für später tauschen nur benachbarte Zeilen desselben Abschnitts.
 - In Habits gilt die neue Reihenfolge auch für die folgenden Tage.
-- In Wichtig, Verlauf und Wiederholungen hebt sich nichts, ebenso während einer Bearbeitung, bei offenem Panel und bei einer Zeile ohne passende Nachbarn.
+- In Wichtig und Wiederholungen zieht nichts, ebenso während einer Bearbeitung und bei einer Zeile ohne passende Nachbarn. Das Blatt öffnet sich dort trotzdem beim Loslassen.
 
-Die neue Reihenfolge erscheint sofort, bevor der Server antwortet. Hat sich die Liste während des Ziehens geändert, etwa vom Mac aus, springt die Zeile zurück und nichts wird gespeichert. Bricht iOS die Geste ab, steht alles wieder am alten Platz.
+Die neue Reihenfolge erscheint sofort, bevor der Server antwortet. Hat sich die Liste während des Ziehens geändert, etwa vom Mac aus, springt die Zeile zurück und nichts wird gespeichert. Bricht iOS die Geste ab, steht alles wieder am alten Platz, und nichts öffnet sich.
 
 ### Zurückwischen
 

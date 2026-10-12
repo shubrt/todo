@@ -54,7 +54,7 @@ type AppState = {
   autoSelected: boolean;
   /**
    * Select the first row as soon as the opened list publishes its rows. Not on touch, where
-   * nothing moves a selection and a tap selects the row it opens.
+   * nothing moves a selection and a tap or long press selects the row it edits or opens.
    */
   focusOnLoad: boolean;
   items: Selectable[];

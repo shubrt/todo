@@ -1,13 +1,14 @@
 import type { Id } from "@todo/backend/dataModel";
 import { Calendar, Check, ChevronDown, ChevronRight, Clock, Flag, Repeat } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import type { Day, Task } from "./data";
 import { dayLabel, snoozeLabel } from "./dates";
-import { rowDrag } from "./drag";
+import { rowHold } from "./drag";
 import { comboOf } from "./keymap";
 import { sameEdit, useApp, type Selectable } from "./store";
 import { useTaskActions, type CreateTarget } from "./task-actions";
-import { isTouch } from "./touch";
+import { isTouch, leaveField } from "./touch";
 import { cx } from "./ui";
 
 /** Publishes the open view's selectable rows (in display order) for the keymap. */
@@ -175,20 +176,22 @@ export function startsRename(event: MouseEvent, editing: boolean) {
 }
 
 /**
- * Touch: a tap on the row selects it and opens its actions sheet through `openActions`. Taps
- * on its controls stay theirs, and a tap that only ended an edit (the field's blur saves)
- * opens nothing. Returns the row's pointer-down and click handlers.
+ * Touch: a tap on the row renames it, as a double click does on the Mac (startsRename): not on
+ * its controls, and not while the tap began on the row being renamed. An edit open in another
+ * row ends first, its blur saves. The new field mounts and takes the focus inside the tap, or
+ * iOS would not open the keyboard. Returns the row's pointer-down and click handlers.
  */
-export function useRowTap(id: string, openActions: () => void) {
+export function useRowTap(id: string) {
+  const actions = useTaskActions();
   const editingAtDown = useRef(false);
   return {
     onPointerDown: () => {
-      editingAtDown.current = Boolean(useApp.getState().editing);
+      editingAtDown.current = sameEdit(useApp.getState().editing, { type: "rename", id });
     },
     onClick: (event: MouseEvent) => {
-      if (!isTouch() || editingAtDown.current || onControl(event)) return;
-      useApp.getState().select(id);
-      openActions();
+      if (!isTouch() || !startsRename(event, editingAtDown.current)) return;
+      leaveField();
+      flushSync(() => actions.rename(id));
     },
   };
 }
@@ -196,8 +199,9 @@ export function useRowTap(id: string, openActions: () => void) {
 /**
  * One task: checkbox in the list color, title, details in fixed order (⚡️, subtasks, ↻, due,
  * planned, snooze, ‼️) and optional habit dots. Click selects, double click renames, right
- * click opens ⌘K; on touch a tap opens ⌘K as a sheet and a long press drags the row (drag.ts,
- * which finds it by `data-task`). Done rows show no details.
+ * click opens ⌘K; on touch a tap renames, and a long press opens ⌘K as a sheet on release or
+ * drags the row once the finger moves (drag.ts, which finds it by `data-task`). Done rows show
+ * no details.
  */
 export function TaskRow({
   task,
@@ -222,9 +226,12 @@ export function TaskRow({
   const actions = useTaskActions();
   const done = task.state === "done";
   const select = () => useApp.getState().select(task._id);
-  const openActions = () => useApp.getState().openPanel({ type: "actions", taskId: task._id });
-  const tap = useRowTap(task._id, openActions);
-  const drag = rowDrag(task._id, actions);
+  const openActions = () => {
+    select();
+    useApp.getState().openPanel({ type: "actions", taskId: task._id });
+  };
+  const tap = useRowTap(task._id);
+  const hold = rowHold(openActions, { taskId: task._id, actions });
   return (
     <div
       ref={ref}
@@ -238,7 +245,7 @@ export function TaskRow({
       }}
       onPointerDown={(event) => {
         tap.onPointerDown();
-        drag(event);
+        hold(event);
       }}
       onClick={tap.onClick}
       onDoubleClick={(event) => {
@@ -246,10 +253,8 @@ export function TaskRow({
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        // A long press on touch can fire this too; it drags there, and a tap opens the sheet.
-        if (isTouch()) return;
-        select();
-        openActions();
+        // A long press on touch can fire this too; the hold opens the sheet there.
+        if (!isTouch()) openActions();
       }}
     >
       {task.isInbox && !seen && <i className="inb" />}
@@ -423,10 +428,17 @@ export function TitleInput({
   const [value, setValue] = useState(initial);
   const [session] = useState(() => useApp.getState().editing);
   const busy = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => void (mounted.current = false);
+  }, []);
   // Compared by value: starting the same edit again (a double click) keeps this field in charge.
+  // A field already gone leaves the edit alone: a save that ends late must not close a new field
+  // of the same row (on touch, a tap away and straight back).
   const finish = () => {
     const state = useApp.getState();
-    if (sameEdit(state.editing, session)) state.edit(null);
+    if (mounted.current && sameEdit(state.editing, session)) state.edit(null);
   };
   async function save(then?: () => void) {
     if (busy.current) return;

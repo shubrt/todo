@@ -1,6 +1,7 @@
 import { useConvexAuth } from "convex/react";
 import { ChevronDown, Plus, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import {
   favoritesOf,
   resolveList,
@@ -20,7 +21,7 @@ import type { Platform } from "./platform";
 import { selectedTask, useApp } from "./store";
 import { TaskActionsProvider, useTaskActions } from "./task-actions";
 import { Toast } from "./toast";
-import { isTouch, longPress } from "./touch";
+import { holdKeyboard, isTouch, longPress } from "./touch";
 import { useTouchLayer } from "./touch-layer";
 import { cx, ListMark } from "./ui";
 import { HabitsView } from "./views/habits";
@@ -206,21 +207,16 @@ function Workspace() {
         )
       }
       status={<StatusDot />}
-      sidebar={
-        lists && (
-          <Sidebar
-            lists={lists}
-            current={list}
-            onNew={isTouch() ? () => startNewTask({ lists, list, settings, actions }) : undefined}
-          />
-        )
-      }
+      sidebar={lists && <Sidebar lists={lists} current={list} />}
       account
     >
       {list && (
         <div className="list" key={list._id} role="listbox" aria-label={list.name}>
           <ListContent list={list} />
         </div>
+      )}
+      {isTouch() && (
+        <NewTaskButton onNew={() => startNewTask({ lists, list, settings, actions })} />
       )}
     </Frame>
   );
@@ -267,19 +263,32 @@ function placeTip(event: MouseEvent<HTMLElement>) {
 }
 
 /**
- * Favorites in order (⌘1..⌘9), the open list below a line when it is not a favorite, and the
- * settings button at the bottom, with `onNew` ("+", touch only) above it. The lists scroll when
- * the window is too short for them; the buttons at the bottom always stay visible.
+ * Touch: the round "+" over the bottom right of the list, ⌘N's stand-in. Hidden while a title
+ * is being edited (the keyboard is up) and while a panel is open. The new row mounts and its
+ * field takes the focus inside the tap, or iOS would not open the keyboard. A list it switches
+ * to may still be loading; then a hidden field holds the keyboard until the row is there.
  */
-function Sidebar({
-  lists,
-  current,
-  onNew,
-}: {
-  lists: List[];
-  current: List | undefined;
-  onNew?: () => void;
-}) {
+function NewTaskButton({ onNew }: { onNew: () => void }) {
+  const hidden = useApp((state) => Boolean(state.editing) || state.panels.length > 0);
+  if (hidden) return null;
+  const tap = () => {
+    flushSync(onNew);
+    const creating = useApp.getState().editing?.type === "create";
+    if (creating && !(document.activeElement instanceof HTMLInputElement)) holdKeyboard();
+  };
+  return (
+    <button className="fab" aria-label="Neue Aufgabe" tabIndex={-1} onClick={tap}>
+      <Plus size={24} />
+    </button>
+  );
+}
+
+/**
+ * Favorites in order (⌘1..⌘9), the open list below a line when it is not a favorite, and the
+ * settings button at the bottom. The lists scroll when the window is too short for them; the
+ * settings button always stays visible.
+ */
+function Sidebar({ lists, current }: { lists: List[]; current: List | undefined }) {
   // Also while one of its pickers (Zeitzone, Standardliste, …) is on top.
   const settingsOpen = useApp((state) => state.panels.some((panel) => panel.type === "settings"));
   return (
@@ -301,17 +310,6 @@ function Sidebar({
         )}
       </div>
       <span className="grow" />
-      {onNew && (
-        <button
-          className="ri sm"
-          aria-label="Neue Aufgabe"
-          tabIndex={-1}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onNew}
-        >
-          <Plus size={15} />
-        </button>
-      )}
       <button
         className={cx("ri", "sm", settingsOpen && "on")}
         aria-label="Einstellungen"

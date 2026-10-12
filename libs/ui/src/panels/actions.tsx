@@ -29,10 +29,10 @@ const icon = 15;
 const emoji = (char: string) => <span className="emo-s">{char}</span>;
 
 /**
- * ⌘K and right click on a task (a tap on touch, as a sheet under the task's title): every
- * action that applies to it, each with the shortcut that also works without the panel (see
- * keymap.ts). Date and move rows open their panel on top, so esc comes back here; all other
- * rows close the stack and run.
+ * ⌘K and right click on a task (a long press on touch, as a sheet under the task's title):
+ * every action that applies to it, each with the shortcut that also works without the panel
+ * (see keymap.ts). Date and move rows open their panel on top, so esc comes back here; all
+ * other rows close the stack and run.
  */
 export function ActionsPanel({ taskId }: { taskId: Id<"tasks"> }) {
   const item = useApp((state) => findTask(state.items, taskId));

@@ -1,8 +1,9 @@
 import type { Id } from "@todo/backend/dataModel";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Task } from "./data";
 import { findTask, useApp, type TaskItem } from "./store";
 import type { TaskActions } from "./task-actions";
-import { gesture, longPress } from "./touch";
+import { gesture, leaveField, longPress, outside, type Press } from "./touch";
 
 /** Px from the list's top or bottom edge in which a lifted row scrolls the list. */
 const edge = 48;
@@ -28,66 +29,81 @@ export function dragRun({ task, siblings, sortable }: TaskItem) {
 }
 
 /**
- * Touch: a long press lifts the task row, the finger moves it within its run (dragRun) and
- * letting go saves the new place through actions.drop. Nothing lifts while editing, with a
- * panel open or in a run of one; the press then stays a tap. Returns the row's pointer-down
- * handler, which ignores a mouse.
+ * Touch: a long press lifts the row, the iOS way. Letting go in place ends any edit (its blur
+ * saves) and calls `open`, which selects the row and opens its actions sheet. Moving on drags
+ * a task row (`drag`) within its run (dragRun), and letting go saves the new place through
+ * actions.drop. Where the row cannot move (while editing, with a panel open, in a run of one,
+ * in Wichtig, a recurrence), moving on puts it back and opens nothing. A press in the title
+ * field is the field's. Returns the row's pointer-down handler, which ignores a mouse.
  */
-export function rowDrag(taskId: Id<"tasks">, actions: TaskActions) {
-  return longPress(({ target, y, pointerId }) => {
+export function rowHold(open: () => void, drag?: { taskId: Id<"tasks">; actions: TaskActions }) {
+  const release = () => {
+    leaveField();
+    open();
+  };
+  const onDown = longPress((press) => {
+    const list = press.target.closest<HTMLElement>(".list");
+    if (!list) return false;
     const state = useApp.getState();
-    const item = findTask(state.items, taskId);
-    const list = target.closest<HTMLElement>(".list");
-    if (!item || !list || state.editing || state.panels.length) return false;
-    const run = dragRun(item);
+    const item = drag && findTask(state.items, drag.taskId);
+    const run = item && !state.editing && !state.panels.length ? dragRun(item) : [];
     const blocks = run.flatMap((task) => block(list, task._id));
-    if (run.length < 2 || blocks.length < run.length) return false;
+    if (!drag || run.length < 2 || blocks.length < run.length) {
+      lift(list, [blockOf(press.target)], 0, press, release);
+      return true;
+    }
+    const { taskId, actions } = drag;
     const from = run.findIndex((task) => task._id === taskId);
-    lift(list, blocks, from, y, pointerId, (steps) => {
+    lift(list, blocks, from, press, release, (steps) => {
       // A live update may have changed the run meanwhile; then the row just goes back.
       const now = findTask(useApp.getState().items, taskId);
       if (now && idsOf(dragRun(now)) === idsOf(run)) void actions.drop(taskId, steps);
     });
     return true;
   });
+  return (event: ReactPointerEvent<HTMLElement>) => {
+    if (!(event.target instanceof Element && event.target.closest("input"))) onDown(event);
+  };
 }
 
 const idsOf = (tasks: Task[]) => tasks.map((task) => task._id).join();
 
 type Block = { elements: HTMLElement[]; top: number; bottom: number };
 
-/**
- * A task's row where it is laid out now, none if it is not shown. A root's expanded subtasks
- * travel with it.
- */
-function block(list: HTMLElement, taskId: string): Block[] {
-  const row = list.querySelector<HTMLElement>(`[data-task="${taskId}"]`);
-  if (!row) return [];
+/** A row where it is laid out now. A root's expanded subtasks travel with it. */
+function blockOf(row: HTMLElement): Block {
   const next = row.nextElementSibling;
   const subs = next instanceof HTMLElement && next.matches(".subs") ? next : undefined;
-  return [
-    {
-      elements: subs ? [row, subs] : [row],
-      top: row.getBoundingClientRect().top,
-      bottom: (subs ?? row).getBoundingClientRect().bottom,
-    },
-  ];
+  return {
+    elements: subs ? [row, subs] : [row],
+    top: row.getBoundingClientRect().top,
+    bottom: (subs ?? row).getBoundingClientRect().bottom,
+  };
+}
+
+/** A task's block, none if its row is not shown. */
+function block(list: HTMLElement, taskId: string): Block[] {
+  const row = list.querySelector<HTMLElement>(`[data-task="${taskId}"]`);
+  return row ? [blockOf(row)] : [];
 }
 
 /**
- * Follows the finger with the lifted block (`from`) until it lets go. The block stays inside
- * the run, the blocks it passes slide by its height, and near the list's edges the list
- * scrolls (one frame at a time, only while the finger is there). `drop` gets the places moved
- * on release; a cancel (the system took the touch) only puts everything back.
+ * Lifts the block `from` until the finger lets go. Letting go within the slop calls `release`.
+ * Moving farther drags it when there is a `drop`, else puts it back: the block follows the
+ * finger inside the run (`blocks`), the blocks it passes slide by its height, and near the
+ * list's edges the list scrolls (one frame at a time, only while the finger is there). `drop`
+ * gets the places moved on release. A cancel (the system took the touch) only puts everything
+ * back.
  */
 function lift(
   list: HTMLElement,
   blocks: Block[],
   from: number,
-  y0: number,
-  pointerId: number,
-  drop: (steps: number) => void,
+  press: Press,
+  release: () => void,
+  drop?: (steps: number) => void,
 ) {
+  const { y: y0, pointerId } = press;
   const lifted = blocks[from]!;
   const height = lifted.bottom - lifted.top;
   const middles = blocks.map((block) => (block.top + block.bottom) / 2);
@@ -95,6 +111,7 @@ function lift(
   const up = Math.min(...blocks.map((block) => block.top)) - lifted.top;
   const down = Math.max(...blocks.map((block) => block.bottom)) - lifted.bottom;
   const scroll0 = list.scrollTop;
+  let dragging = false;
   let y = y0;
   let to = from;
   let frame = 0;
@@ -137,17 +154,7 @@ function lift(
     layout();
     frame = requestAnimationFrame(scroll);
   };
-  const move = (event: PointerEvent) => {
-    if (event.pointerId !== pointerId) return;
-    y = event.clientY;
-    layout();
-    if (!frame && zone()) {
-      last = 0;
-      frame = requestAnimationFrame(scroll);
-    }
-  };
-  const end = (event: PointerEvent) => {
-    if (event.pointerId !== pointerId) return;
+  const putBack = () => {
     cancelAnimationFrame(frame);
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", end);
@@ -160,7 +167,24 @@ function lift(
         element.style.transform = "";
         delete element.dataset.lift;
       }
-    if (event.type === "pointerup" && to !== from) drop(to - from);
+  };
+  const move = (event: PointerEvent) => {
+    if (event.pointerId !== pointerId || (!dragging && !outside(press, event))) return;
+    if (!drop) return putBack();
+    dragging = true;
+    y = event.clientY;
+    layout();
+    if (!frame && zone()) {
+      last = 0;
+      frame = requestAnimationFrame(scroll);
+    }
+  };
+  const end = (event: PointerEvent) => {
+    if (event.pointerId !== pointerId) return;
+    putBack();
+    if (event.type !== "pointerup") return;
+    if (!dragging) release();
+    else if (to !== from) drop?.(to - from);
   };
 
   gesture.lock = true;

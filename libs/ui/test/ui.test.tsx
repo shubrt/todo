@@ -1765,6 +1765,8 @@ describe("Touch", () => {
   // happy-dom answers (pointer: coarse) and (hover: hover) from maxTouchPoints.
   beforeEach(() => {
     Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, get: () => 5 });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(now);
   });
   afterEach(() => {
     Reflect.deleteProperty(navigator, "maxTouchPoints");
@@ -1790,24 +1792,154 @@ describe("Touch", () => {
   }
   /** Lets a resting finger turn into a long press. */
   const wait = () => act(async () => vi.advanceTimersByTime(450));
+  /** A tap: the finger down and up, then the mouse events iOS sends for it. */
+  async function tap(element: Element | null | undefined) {
+    await finger("pointerdown", element, 100);
+    await finger("pointerup", element, 100);
+    await click(element);
+  }
+  /** A long press let go in place, then the click iOS may send after it. */
+  async function hold(element: Element | null | undefined) {
+    await finger("pointerdown", element, 100);
+    await wait();
+    await finger("pointerup", element, 100);
+    await click(element);
+  }
+  const field = () => document.activeElement as HTMLInputElement;
 
-  it("öffnet mit einem Tipp auf die Zeile die Aktionen als Blatt unter ihrem Titel", async () => {
+  it("benennt mit einem Tipp auf die Zeile um, Checkbox und 0/5 behalten ihren Tipp", async () => {
     await render();
-    await click(rowOf("Reise DB")?.querySelector(".t"));
+    await tap(rowOf("Reise DB")?.querySelector(".cb"));
+    expect(mutation("tasks:complete")).toHaveBeenCalledWith({ taskId: "reise" });
+    await tap(rowOf("Neo Basis")?.querySelector("[aria-expanded]"));
+    expect(app().expanded.neo).toBe(true);
+    expect(app().editing).toBeNull();
+
+    await tap(rowOf("Umbau auf Todo App")?.querySelector(".t"));
+    expect(app().selection).toBe("umbau");
+    expect(app().editing).toEqual({ type: "rename", id: "umbau" });
+    expect(field().value).toBe("Umbau auf Todo App");
+    expect(app().panels).toEqual([]);
+  });
+
+  it("wechselt mit einem Tipp auf eine andere Zeile das Bearbeiten und speichert die erste", async () => {
+    await render();
+    await tap(rowOf("Umbau auf Todo App")?.querySelector(".t"));
+    await type("Umbau auf Listen");
+    await tap(rowOf("Reise DB")?.querySelector(".t"));
+    expect(mutation("tasks:update")).toHaveBeenCalledExactlyOnceWith({
+      taskId: "umbau",
+      title: "Umbau auf Listen",
+    });
+    expect(app().editing).toEqual({ type: "rename", id: "reise" });
+    const reise = field();
+    expect(reise.value).toBe("Reise DB");
+
+    // A tap on the row being edited leaves the edit alone.
+    await tap($(".row.edit"));
+    expect(app().editing).toEqual({ type: "rename", id: "reise" });
+    expect(field()).toBe(reise);
+  });
+
+  it("lässt eine neue Bearbeitung offen, wenn der Save der vorigen derselben Zeile spät endet", async () => {
+    await render();
+    const save = Promise.withResolvers<null>();
+    mutation("tasks:update").mockReturnValueOnce(save.promise);
+    await tap(rowOf("Umbau auf Todo App")?.querySelector(".t"));
+    await type("Umbau auf Listen");
+    await tap(rowOf("Reise DB")?.querySelector(".t"));
+    // Straight back before the server answers.
+    await tap(rowOf("Umbau auf Todo App")?.querySelector(".t"));
+    const umbau = field();
+    await act(async () => save.resolve(null));
+    expect(app().editing).toEqual({ type: "rename", id: "umbau" });
+    expect(field()).toBe(umbau);
+  });
+
+  it("öffnet mit langem Druck beim Loslassen die Aktionen als Blatt und schluckt den Klick", async () => {
+    await render();
+    const reise = rowOf("Reise DB");
+    // A finger that moves before the hold is scrolling: nothing lifts, opens or edits.
+    await finger("pointerdown", reise, 100);
+    await finger("pointermove", reise, 109);
+    await wait();
+    await finger("pointerup", reise, 109);
+    expect(reise?.dataset.lift).toBeUndefined();
+    expect(app().panels).toEqual([]);
+
+    // The hold only lifts the row; letting go opens the sheet under its title.
+    await finger("pointerdown", reise, 100);
+    await wait();
+    expect(reise?.dataset.lift).toBe("");
+    expect(app().panels).toEqual([]);
+    await finger("pointerup", reise, 104);
+    expect(reise?.dataset.lift).toBeUndefined();
     expect(app().selection).toBe("reise");
     expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
     expect($(".pal .hd")?.textContent).toBe("Reise DB");
     expect($(".pal input")).toBeNull();
     expect($(".pal .pi.sel")).toBeNull();
+    // The click iOS may send on release lands on the layer and closes nothing.
+    await click($(".pal-layer"));
+    expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
+    expect(app().editing).toBeNull();
     await click($(".pal-layer"));
     expect($(".pal")).toBeNull();
 
-    // The checkbox and the subtask counter keep their own tap.
-    await click(rowOf("Reise DB")?.querySelector(".cb"));
-    expect(mutation("tasks:complete")).toHaveBeenCalledWith({ taskId: "reise" });
-    await click(rowOf("Neo Basis")?.querySelector("[aria-expanded]"));
-    expect(app().expanded.neo).toBe(true);
+    // A cancel after the hold opens nothing.
+    await finger("pointerdown", reise, 100);
+    await wait();
+    await finger("pointercancel", reise, 100);
+    expect(reise?.dataset.lift).toBeUndefined();
     expect(app().panels).toEqual([]);
+  });
+
+  it("hebt auch Zeilen, die sich nicht ziehen lassen, und öffnet nur beim Loslassen", async () => {
+    await render();
+    // Nothing drags while editing; letting go saves the edit and opens the sheet.
+    await tap(rowOf("Umbau auf Todo App")?.querySelector(".t"));
+    await type("Umbau auf Listen");
+    const reise = rowOf("Reise DB");
+    await finger("pointerdown", reise, 100);
+    await wait();
+    expect(reise?.dataset.lift).toBe("");
+    await finger("pointerup", reise, 100);
+    await click(reise);
+    expect(mutation("tasks:update")).toHaveBeenCalledWith({
+      taskId: "umbau",
+      title: "Umbau auf Listen",
+    });
+    expect(app().editing).toBeNull();
+    expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
+    await click($(".pal-layer"));
+
+    // In Wichtig a finger that moves after the hold puts the row back and opens nothing.
+    await click($(".side [aria-label='Wichtig']"));
+    const mama = rowOf("Mama anrufen");
+    await finger("pointerdown", mama, 100);
+    await wait();
+    await finger("pointermove", mama, 140);
+    expect(mama?.dataset.lift).toBeUndefined();
+    expect(mama?.style.transform).toBe("");
+    await finger("pointerup", mama, 140);
+    expect(app().panels).toEqual([]);
+    expect(mutation("tasks:reorder")).not.toHaveBeenCalled();
+    await hold(mama);
+    expect(app().panels).toEqual([{ type: "actions", taskId: "mama" }]);
+  });
+
+  it("benennt Wiederholungen mit einem Tipp um und öffnet mit langem Druck ihre Aktionen", async () => {
+    await render();
+    await act(async () => navigate("recurrences"));
+    await tap(rowOf("Wochenbericht")?.querySelector(".t"));
+    expect(app().editing).toEqual({ type: "rename", id: "r-week" });
+    expect(field().value).toBe("Wochenbericht");
+    await press("escape");
+
+    await hold(rowOf("Miete überweisen"));
+    expect(app().selection).toBe("r-miete");
+    expect(app().panels).toEqual([{ type: "recurrenceActions", recurrenceId: "r-miete" }]);
+    expect(app().editing).toBeNull();
   });
 
   it("wählt beim Öffnen nichts aus und markiert erst mit einer Suche die erste Zeile", async () => {
@@ -1816,7 +1948,7 @@ describe("Touch", () => {
     expect(title()).toBe("💌me");
     expect(app().selection).toBeNull();
 
-    await click(rowOf("Mama anrufen")?.querySelector(".t"));
+    await hold(rowOf("Mama anrufen"));
     await click(panelRow("Einplanen …"));
     const search = $(".pal input");
     expect(document.activeElement).not.toBe(search);
@@ -1827,8 +1959,6 @@ describe("Touch", () => {
   });
 
   it("öffnet mit dem Titel die Listensuche und zeigt die Blase des Punkts 2 s lang", async () => {
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-    vi.setSystemTime(now);
     await render();
     await click($(".ttl"));
     expect(app().panels).toEqual([{ type: "switcher" }]);
@@ -1841,33 +1971,54 @@ describe("Touch", () => {
     expect($(".st")?.className).toBe("st ok");
   });
 
-  it("legt mit + über den Einstellungen in der Standardliste an", async () => {
+  it("legt mit dem runden + in der Standardliste an und blendet es beim Bearbeiten aus", async () => {
     await render();
-    expect(
-      $$(".side .ri")
-        .map((item) => item.getAttribute("aria-label"))
-        .slice(-2),
-    ).toEqual(["Neue Aufgabe", "Einstellungen"]);
+    expect($(".side [aria-label='Neue Aufgabe']")).toBeNull();
+    expect($$(".side .ri").at(-1)?.getAttribute("aria-label")).toBe("Einstellungen");
     await click($(".side [aria-label='Wichtig']"));
-    await click($(".side [aria-label='Neue Aufgabe']"));
+    await click($(".fab"));
     expect(title()).toBe("💌me");
     expect(app().editing).toEqual({ type: "create" });
-    expect((document.activeElement as HTMLInputElement).placeholder).toBe("Neue Aufgabe");
+    expect(field().placeholder).toBe("Neue Aufgabe");
+    expect($(".fab")).toBeNull();
+    await press("escape");
+    expect($(".fab")?.getAttribute("aria-label")).toBe("Neue Aufgabe");
+    // Hidden under a panel too.
+    await hold(rowOf("Mama anrufen"));
+    expect($(".fab")).toBeNull();
   });
 
-  it("hat auf dem Mac weder Tipp auf Titel und Punkt noch +", async () => {
+  it("hält mit dem runden + die Tastatur, bis die Standardliste geladen ist", async () => {
+    await render();
+    await click($(".side [aria-label='Wichtig']"));
+    const deferred = backend.queries["tasks:deferred"]!;
+    await run(() => backend.change(() => (backend.queries["tasks:deferred"] = () => undefined)));
+    onTestFinished(() => void (backend.queries["tasks:deferred"] = deferred));
+    await click($(".fab"));
+    expect(title()).toBe("💌me");
+    expect(document.activeElement?.className).toBe("kb-hold");
+    await run(() => backend.change(() => (backend.queries["tasks:deferred"] = deferred)));
+    expect(field().placeholder).toBe("Neue Aufgabe");
+    expect(document.querySelector(".kb-hold")).toBeNull();
+  });
+
+  it("hat auf dem Mac kein Touch-Verhalten, ein Klick auf die Zeile wählt nur aus", async () => {
     Reflect.deleteProperty(navigator, "maxTouchPoints");
     await render();
     await click($(".ttl"));
     await click($(".st"));
     expect(app().panels).toEqual([]);
     expect($(".st")?.className).toBe("st ok");
-    expect($(".side [aria-label='Neue Aufgabe']")).toBeNull();
+    expect($(".fab")).toBeNull();
+    await click(rowOf("Reise DB")?.querySelector(".t"));
+    expect(app().selection).toBe("reise");
+    expect(app().editing).toBeNull();
+    expect(app().panels).toEqual([]);
   });
 
   it("plant und stellt über die Datumsauswahl des Systems zurück, nie in die Vergangenheit", async () => {
     await render();
-    await click(rowOf("Reise DB")?.querySelector(".t"));
+    await hold(rowOf("Reise DB"));
     await click(panelRow("Einplanen …"));
     const day = panelRow("Datum wählen …")?.querySelector<HTMLInputElement>("input.pick");
     expect(day?.type).toBe("date");
@@ -1882,7 +2033,7 @@ describe("Touch", () => {
     });
     expect($(".pal")).toBeNull();
 
-    await click(rowOf("Reise DB")?.querySelector(".t"));
+    await hold(rowOf("Reise DB"));
     await click(panelRow("Zurückstellen …"));
     const time = panelRow("Datum wählen …")?.querySelector<HTMLInputElement>("input.pick");
     expect(time?.type).toBe("datetime-local");
@@ -1903,8 +2054,6 @@ describe("Touch", () => {
   });
 
   it("öffnet mit langem Druck auf eine Liste ihre Aktionen, in der Leiste und in der Suche", async () => {
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-    vi.setSystemTime(now);
     await render();
     const me = $(".side [aria-label='me']");
     // A finger that moves first is scrolling.
@@ -1938,8 +2087,6 @@ describe("Touch", () => {
   });
 
   it("sortiert eine offene Aufgabe mit langem Druck und Ziehen um", async () => {
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
-    vi.setSystemTime(now);
     // happy-dom lays nothing out: rows 36 px tall from y 50 in a list 600 px tall.
     const tops: Record<string, number> = {
       servoy: 50,
@@ -1979,7 +2126,7 @@ describe("Touch", () => {
         (text) => rowOf(text)?.style.transform,
       ),
     ).toEqual(["translateY(80px)", "translateY(-36px)", "translateY(-36px)", ""]);
-    // Shown at once, and the release opens no sheet.
+    // Shown at once, and the release opens no sheet and edits nothing.
     await finger("pointerup", umbau, 184);
     await click(umbau?.querySelector(".t"));
     expect(mutation("tasks:reorder")).toHaveBeenCalledExactlyOnceWith({
@@ -1995,6 +2142,7 @@ describe("Touch", () => {
       "Release prüfen",
     ]);
     expect(app().panels).toEqual([]);
+    expect(app().editing).toBeNull();
     expect($(".list")?.dataset.dragging).toBeUndefined();
     expect(umbau?.style.transform).toBe("");
 
@@ -2031,7 +2179,7 @@ describe("Touch", () => {
 
   it("schließt mit dem Wischen zurück das oberste Panel", async () => {
     await render();
-    await click(rowOf("Reise DB")?.querySelector(".t"));
+    await hold(rowOf("Reise DB"));
     await click(panelRow("Einplanen …"));
     expect(history.state).toEqual({ panel: 2 });
     await act(async () => history.back());
