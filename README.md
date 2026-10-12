@@ -56,8 +56,8 @@ die unsignierte macOS-App unter `apps/desktop/release/` ab.
 `vp run install:mac` baut und prüft den aktuellen Stand von `main` und
 installiert ihn als `/Applications/todo.app`,
 siehe [Desktop](docs/desktop.md#auf-diesem-mac-installieren-und-aktualisieren).
-Die Web-App veröffentlicht Railway nach jedem Merge nach `main`, der sie
-betrifft, von selbst, siehe [Hosting](docs/web.md#hosting).
+Die Web-App veröffentlicht Railway nach jedem Merge nach `main` von selbst,
+siehe [Hosting](docs/web.md#hosting).
 
 ## Dokumentation
 

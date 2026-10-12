@@ -146,8 +146,7 @@ Die App läuft auf Railway im Projekt "task", Service `web`, unter der eigenen D
 Die Build-Einstellungen stehen im Dienst, nicht im Repository. Railway hat `railway.json` abgekündigt, die Datei wirkt nur bis zum 1. Dezember 2026.
 
 - Die Dienstvariable `RAILWAY_DOCKERFILE_PATH` lässt Railway mit `apps/web/Dockerfile` bauen. Build-Kontext ist das ganze Repository.
-- Die Watch-Patterns des Dienstes lassen nur Änderungen unter `apps/web`, `libs` und `tools/typescript` sowie an `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` und `.dockerignore` einen Build auslösen. Reine Mac- oder Doku-Änderungen nicht.
-- Der Healthcheck fragt `/`. Bei Fehlern startet Railway den Dienst bis zu zehnmal neu.
+- Jeder Push auf `main` baut neu, auch reine Mac- oder Doku-Änderungen. Die neue Version hat einen anderen Commit, eine offene App lädt deshalb beim nächsten Wechsel in den Vordergrund einmal neu.
 
 Das Dockerfile baut in zwei Stufen. Die erste nutzt `node:24`. Mit `node:24-slim` bricht Vite+ ab, weil dort die CA-Zertifikate fehlen. Corepack holt pnpm in der Version aus `packageManager`, `pnpm install --frozen-lockfile --filter @todo/web...` installiert nur die Web-App mit ihren Paketen, ohne Electron. `pnpm --filter @todo/web build` baut nach `apps/web/dist`. Die zweite Stufe ist `caddy:2-alpine` mit `apps/web/Caddyfile` und den gebauten Dateien in `/srv`. `.dockerignore` hält `.git`, `node_modules`, Builds und alle `.env*`-Dateien außer `.env.example` aus dem Build.
 
