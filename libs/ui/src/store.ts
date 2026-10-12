@@ -47,14 +47,15 @@ export function sameEdit(a: Editing | null, b: Editing | null) {
 }
 
 type AppState = {
-  current: ListRef;
+  /** The open list; null until the start list is known (see useStartList) or a list is opened. */
+  current: ListRef | null;
   /** Id of the selected Selectable. */
   selection: string | null;
   /** The selection was made by opening a list, not by the user (it does not clear the inbox). */
   autoSelected: boolean;
   /**
    * Select the first row as soon as the opened list publishes its rows. Not on touch, where
-   * nothing moves a selection and a tap selects the row it opens.
+   * nothing moves a selection and a tap or long press selects the row it edits or opens.
    */
   focusOnLoad: boolean;
   items: Selectable[];
@@ -99,7 +100,7 @@ let toastId = 0;
 export const useApp = create<AppState>()(
   persist(
     (set, get) => ({
-      current: { kind: "important" },
+      current: null,
       selection: null,
       autoSelected: false,
       focusOnLoad: !isTouch(),

@@ -127,6 +127,7 @@ export function NewKeyPanel() {
   return (
     <Panel
       crumb="Neuer Schlüssel"
+      head="Einstellungen"
       placeholder="Name, z. B. task-capture"
       typing
       // The name stays visible while waiting and afterwards, but only the first step edits it.

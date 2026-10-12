@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight, Search } from "lucide-react";
 import {
   Fragment,
   useEffect,
@@ -7,12 +7,15 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type Ref,
 } from "react";
+import { useDay, useLists, type Task } from "../data";
 import { comboOf, hasModifier, matches } from "../keymap";
+import { dateDetails } from "../rows";
 import { useApp } from "../store";
-import { isTouch, longPress } from "../touch";
+import { isTouch, longPress, pullDown } from "../touch";
 import { cx, Keycaps } from "../ui";
 import "./panels.css";
 
@@ -38,10 +41,19 @@ export type PanelItem = {
   run?: () => void;
   /** Touch: what a long press on the row does, e.g. the list actions in the switcher. */
   hold?: () => void;
+  /** Touch: the label as a tile (see PanelSection `columns`), e.g. Später for Zurückstellen …. */
+  tile?: string;
+  /** Touch: a toggle tile that is set (Wichtig, KI), ringed; its label already says so. */
+  on?: boolean;
+  /** Touch: the current list's tile, ringed like `on` and named with "aktuell". */
+  current?: boolean;
 };
 
-/** A group of rows; sections are separated by a line and may have a label (Settings). */
-export type PanelSection = { id: string; label?: string; items: PanelItem[] };
+/**
+ * A group of rows; sections are separated by a line and may have a label (Settings). On touch,
+ * `columns` lays the rows out as tiles in that many columns: 4 for task actions, 3 for lists.
+ */
+export type PanelSection = { id: string; label?: string; items: PanelItem[]; columns?: 3 | 4 };
 
 export type PanelProps = {
   sections: PanelSection[];
@@ -53,7 +65,7 @@ export type PanelProps = {
   onQueryChange?: (query: string) => void;
   /** Hides rows whose label and keywords miss the search (default). Off when the panel builds rows from the query itself. */
   filter?: boolean;
-  /** Width in px: 340 (actions, default) or 330 (switcher). Touch sheets span the window. */
+  /** Width in px: 340 (actions, default) or 330 (switcher). Touch drawers span the window. */
   width?: number;
   /** Denser rows, used by Settings. */
   compact?: boolean;
@@ -62,10 +74,12 @@ export type PanelProps = {
   /** Shown when no row is left. */
   empty?: ReactNode;
   /**
-   * Touch: a sheet that is tapped, not searched, shows this title line (the task, the list) in
-   * place of the crumb and search field.
+   * Touch: what the drawer acts on, in the line under the grabber: a task (checkbox in its list
+   * color, title and dates) or a plain title (a list, a recurrence, Einstellungen).
    */
-  header?: string;
+  head?: string | Task;
+  /** Touch: false drops the search field of a drawer that is tapped, not searched (Settings). */
+  search?: boolean;
   /** Touch: the search field takes focus on open, for panels that are typed into. */
   typing?: boolean;
   inputRef?: Ref<HTMLInputElement>;
@@ -112,8 +126,10 @@ const normalize = (text: string) => text.toLocaleLowerCase("de-DE").trim();
  * themselves whether running them closes the whole stack (store.closePanels).
  * ⌘⌫ in a filled search field clears it, as in any macOS text field, and keeps the highlighted
  * row; only a ⌘⌫ in the empty field reaches the rows (Verwerfen, Liste löschen, widerrufen).
- * On touch rows are tapped: the field waits for a tap (unless `typing`), and nothing is
- * highlighted until there is a search, whose first row the keyboard's return key then runs.
+ * On touch the panel is a drawer at the bottom: grabber, `head`, search field, then rows or
+ * tiles to tap. Pulling the top part down closes it (pullDown). The field waits for a tap
+ * (unless `typing`), and nothing is highlighted until there is a search, whose first row the
+ * keyboard's return key then runs.
  */
 export function Panel({
   sections,
@@ -126,7 +142,8 @@ export function Panel({
   compact = false,
   hint,
   empty = "Keine Treffer",
-  header,
+  head,
+  search = true,
   typing = false,
   inputRef,
   onKeyDown,
@@ -136,7 +153,8 @@ export function Panel({
   const query = controlled ?? own;
   const [highlightId, setHighlightId] = useState<string>();
   const listId = useId();
-  const rows = useRef(new Map<string, HTMLDivElement>());
+  const rows = useRef(new Map<string, HTMLElement>());
+  const drawer = useRef<HTMLDivElement>(null);
 
   const visible = useMemo(() => {
     const needle = filter ? normalize(query) : "";
@@ -210,42 +228,143 @@ export function Panel({
     }
   }
 
+  const field = (
+    <div className="q">
+      {crumb ? (
+        <span className="crumb">
+          {crumb}
+          <ChevronRight size={12} />
+        </span>
+      ) : (
+        touch && <Search size={15} />
+      )}
+      <input
+        ref={inputRef}
+        autoFocus={!touch || typing}
+        value={query}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoComplete="off"
+        autoCapitalize="none"
+        autoCorrect="off"
+        role="combobox"
+        aria-expanded
+        aria-controls={listId}
+        aria-activedescendant={highlighted ? `${listId}-${highlighted.id}` : undefined}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={handleKey}
+      />
+    </div>
+  );
+
+  /** What rows and tiles share: their id and ref, the highlight, the press, hold and tap. */
+  const target = (item: PanelItem) => ({
+    id: `${listId}-${item.id}`,
+    ref: (element: HTMLElement | null) => {
+      if (element) rows.current.set(item.id, element);
+      else rows.current.delete(item.id);
+    },
+    "aria-disabled": !runnable(item),
+    onMouseMove: () => {
+      // iOS sends one before each tap; a highlight then would show the row's extras (the ⌘P
+      // star) and cost the tap.
+      if (!touch && runnable(item) && item !== highlighted) setHighlightId(item.id);
+    },
+    onMouseDown: (event: MouseEvent) => {
+      // Keeps the focus in the search field, except for a field in the row (Datum wählen),
+      // which must take it to open its picker.
+      if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+    },
+    onPointerDown:
+      item.hold &&
+      longPress(() => {
+        item.hold?.();
+        return true;
+      }),
+    onClick: () => {
+      if (runnable(item)) item.run?.();
+    },
+  });
+  const valueOf = (item: PanelItem) =>
+    typeof item.value === "function" ? item.value(item === highlighted) : item.value;
+
+  const row = (item: PanelItem) => (
+    <div
+      key={item.id}
+      {...target(item)}
+      role="option"
+      aria-selected={item === highlighted}
+      className={cx(
+        "pi",
+        item === highlighted && "sel",
+        item.dim && "off",
+        item.tone === "danger" && "danger",
+        item.info && "info",
+      )}
+    >
+      {item.icon !== undefined && <span className="ic">{item.icon}</span>}
+      <span className="pt">{item.label}</span>
+      {item.keys ? (
+        <Keycaps combo={item.keys} />
+      ) : (
+        item.value !== undefined && <span className="pacc">{valueOf(item)}</span>
+      )}
+    </div>
+  );
+  // An option named by its full label, which says what a toggle does ("Nicht mehr wichtig"),
+  // then the current list's state and a text value: "work, aktuell, 4".
+  const tile = (item: PanelItem) => {
+    const value = valueOf(item);
+    const text = typeof value === "string" || typeof value === "number" ? value : null;
+    return (
+      <button
+        key={item.id}
+        {...target(item)}
+        role="option"
+        aria-selected={item === highlighted}
+        className={cx(
+          "tile",
+          item === highlighted && "sel",
+          (item.on || item.current) && "on",
+          item.dim && "off",
+        )}
+        aria-label={[item.label, item.current && "aktuell", text].filter(Boolean).join(", ")}
+        tabIndex={-1}
+      >
+        {item.icon}
+        <span className="tl">{item.tile ?? item.label}</span>
+        {value != null && <span className="tv">{value}</span>}
+      </button>
+    );
+  };
+
   return (
     <div
+      ref={drawer}
       className={cx("pal", compact && "set")}
       style={{ "--pal-w": `${width}px` }}
       role="dialog"
-      aria-label={touch && header !== undefined ? header : placeholder}
+      aria-label={
+        touch && !search && head ? (typeof head === "string" ? head : head.title) : placeholder
+      }
     >
-      {touch && header !== undefined ? (
-        <div className="q">
-          <span className="hd">{header}</span>
+      {touch ? (
+        <div
+          className="head"
+          onPointerDown={pullDown(drawer, () => useApp.getState().closePanel())}
+        >
+          <i className="grab" />
+          {typeof head === "string" ? (
+            <div className="hd">
+              <span className="ht">{head}</span>
+            </div>
+          ) : (
+            head && <TaskHead task={head} />
+          )}
+          {search && field}
         </div>
       ) : (
-        <div className="q">
-          {crumb && (
-            <span className="crumb">
-              {crumb}
-              <ChevronRight size={12} />
-            </span>
-          )}
-          <input
-            ref={inputRef}
-            autoFocus={!touch || typing}
-            value={query}
-            placeholder={placeholder}
-            spellCheck={false}
-            autoComplete="off"
-            autoCapitalize="none"
-            autoCorrect="off"
-            role="combobox"
-            aria-expanded
-            aria-controls={listId}
-            aria-activedescendant={highlighted ? `${listId}-${highlighted.id}` : undefined}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={handleKey}
-          />
-        </div>
+        field
       )}
       <div className="pl" id={listId} role="listbox">
         {visible.length ? (
@@ -253,63 +372,11 @@ export function Panel({
             <Fragment key={section.id}>
               {index > 0 && <div className="sep" />}
               {section.label && <div className="ps">{section.label}</div>}
-              {section.items.map((item) => {
-                const isHighlighted = item === highlighted;
-                return (
-                  <div
-                    key={item.id}
-                    id={`${listId}-${item.id}`}
-                    ref={(element) => {
-                      if (element) rows.current.set(item.id, element);
-                      else rows.current.delete(item.id);
-                    }}
-                    role="option"
-                    aria-selected={isHighlighted}
-                    aria-disabled={!runnable(item)}
-                    className={cx(
-                      "pi",
-                      isHighlighted && "sel",
-                      item.dim && "off",
-                      item.tone === "danger" && "danger",
-                      item.info && "info",
-                    )}
-                    onMouseMove={() => {
-                      // iOS sends one before each tap; a highlight then would show the
-                      // row's extras (the ⌘P star) and cost the tap.
-                      if (!touch && runnable(item) && !isHighlighted) setHighlightId(item.id);
-                    }}
-                    onMouseDown={(event) => {
-                      // Keeps the focus in the search field, except for a field in the row
-                      // (Datum wählen), which must take it to open its picker.
-                      if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
-                    }}
-                    onPointerDown={
-                      item.hold &&
-                      longPress(() => {
-                        item.hold?.();
-                        return true;
-                      })
-                    }
-                    onClick={() => {
-                      if (runnable(item)) item.run?.();
-                    }}
-                  >
-                    {item.icon !== undefined && <span className="ic">{item.icon}</span>}
-                    <span className="pt">{item.label}</span>
-                    {item.keys ? (
-                      <Keycaps combo={item.keys} />
-                    ) : (
-                      item.value !== undefined && (
-                        <span className="pacc">
-                          {typeof item.value === "function"
-                            ? item.value(isHighlighted)
-                            : item.value}
-                        </span>
-                      )
-                    )}
-                  </div>
-                );
-              })}
+              {touch && section.columns ? (
+                <div className={cx("tiles", `c${section.columns}`)}>{section.items.map(tile)}</div>
+              ) : (
+                section.items.map(row)
+              )}
             </Fragment>
           ))
         ) : (
@@ -317,6 +384,24 @@ export function Panel({
         )}
       </div>
       {hint && <div className="hint">{hint}</div>}
+    </div>
+  );
+}
+
+/** Touch: the head of a task's drawer, as in its row: checkbox in the list color and dates. */
+function TaskHead({ task }: { task: Task }) {
+  const lists = useLists();
+  const day = useDay();
+  const done = task.state === "done";
+  const dates = day && !done ? dateDetails(task, day).filter(Boolean) : [];
+  return (
+    <div
+      className={cx("hd", done && "done")}
+      style={{ "--acc": lists?.find((list) => list._id === task.listId)?.color }}
+    >
+      <i className="cb">{done && <Check size={10} />}</i>
+      <span className="ht">{task.title}</span>
+      {dates.length > 0 && <span className="hm">{dates}</span>}
     </div>
   );
 }

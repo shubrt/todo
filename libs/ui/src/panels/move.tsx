@@ -20,6 +20,7 @@ export function MovePanel({ taskId }: { taskId: Id<"tasks"> }) {
   return (
     <Panel
       crumb="Verschieben"
+      head={task}
       placeholder="Liste suchen …"
       sections={listSections(
         lists.filter((list) => list.kind === "tasks"),

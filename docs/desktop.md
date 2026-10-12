@@ -134,6 +134,8 @@ Schreiben ist gesperrt, sobald die Verbindung fehlt. Das gilt schon in den erste
 
 Die Seitenleiste zeigt die Favoriten als Emoji, Listen ohne Emoji als Anfangsbuchstaben in einem kleinen Feld. Beim Überfahren erscheinen Name und Kurzbefehl `⌘1` bis `⌘9`. Ist eine Liste geöffnet, die kein Favorit ist, steht sie unter einem kurzen Strich, bis eine andere Liste gewählt wird. Unten öffnet das Reglersymbol die Einstellungen. Anfangs sind Wichtig, me, agency, work und Habits Favoriten, in dieser Reihenfolge. In der Listensuche verschieben `⌥↑` und `⌥↓` den markierten Favoriten um eine Stelle. Seitenleiste und `⌘1` bis `⌘9` folgen der neuen Reihenfolge.
 
+Beim Start öffnet die App den ersten Favoriten der Seitenleiste, ohne Favoriten die Standardliste und ohne Standardliste Wichtig. Bis die Listen und wenn nötig die Einstellungen geladen sind, bleibt das Fenster leer. Hat das Menüleistenmenü vorher schon eine Liste geöffnet, bleibt diese offen.
+
 Das Menüleistenmenü öffnet Wichtig, Verlauf, Wiederholungen und mit "Listen …" die Listensuche. Darunter schalten "Immer im Vordergrund" und "Auf allen Schreibtischen" um. Es folgen "Einstellungen …" (`⌘,`), "Fenster ausblenden" und "Beenden" (`⌘Q`). Einen Pin in der Titelleiste gibt es nicht, "Immer im Vordergrund" steht im Menü und in den Einstellungen. Das Schließen des Fensters blendet es nur aus, die Menüleiste bleibt verfügbar. Autostart ist optional und lässt sich nur in der installierten App einschalten.
 
 ### Listen

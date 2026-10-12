@@ -128,8 +128,9 @@ Die App setzt für Änderungen Internet voraus. Clients sind der schwebende
 macOS-Client und eine [Web-App](web.md) für das iPhone mit derselben
 Oberfläche. Die iPhone-App kommt ohne App Store aus. Man fügt sie in Safari zum
 Home-Bildschirm hinzu, sie meldet sich wie der Mac über Shoo an und hält einen
-eigenen Geräteschlüssel. Auf dem iPhone öffnet ein Tipp auf eine Zeile ihre
-Aktionen, langes Drücken sortiert um. Der Mac bleibt dabei unverändert. Einen
-Offline-Modus gibt es auf keinem Gerät. Die frühere Web-App und die Expo-App
-für iOS und Android samt Habit-Widgets wurden am 1. Oktober 2026 entfernt.
-Anbindungen an Sprachassistenten stehen noch aus.
+eigenen Geräteschlüssel. Auf dem iPhone bearbeitet ein Tipp den Titel einer
+Zeile. Langes Drücken öffnet beim Loslassen ihre Aktionen, mit Ziehen sortiert
+es um. Der Mac bleibt dabei unverändert. Einen Offline-Modus gibt es auf
+keinem Gerät. Die frühere Web-App und die Expo-App für iOS und Android samt
+Habit-Widgets wurden am 1. Oktober 2026 entfernt. Anbindungen an
+Sprachassistenten stehen noch aus.

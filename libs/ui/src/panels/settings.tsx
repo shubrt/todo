@@ -173,7 +173,8 @@ function Settings({
     <Panel
       compact
       // Touch shows the title instead of a search over these few rows.
-      header="Einstellungen"
+      head="Einstellungen"
+      search={false}
       placeholder="Einstellung suchen …"
       sections={[
         ...(preferences && platform.setPreferences
@@ -312,6 +313,7 @@ export function DefaultListPanel() {
   return (
     <Panel
       crumb="Standardliste"
+      head="Einstellungen"
       placeholder="Liste suchen …"
       sections={listSections(
         lists.filter((list) => list.kind === "tasks"),
@@ -353,6 +355,7 @@ export function TimeZonePanel() {
   return (
     <Panel
       crumb="Zeitzone"
+      head="Einstellungen"
       placeholder="Zeitzone suchen …"
       typing
       query={query}

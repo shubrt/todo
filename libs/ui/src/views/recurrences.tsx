@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Repeat } from "lucide-react";
 import { Fragment, useMemo } from "react";
 import { useLists, useWrite, type List, type Recurrence } from "../data";
+import { rowHold } from "../drag";
 import {
   EmptyLine,
   SectionHeader,
@@ -40,8 +41,9 @@ const openActions = (recurrenceId: Id<"recurrences">) =>
 
 /**
  * Wiederholungen: recurring tasks and habits in one section per list (no emoji in the
- * header), habits in their Habits order. Paused ones stay in place, dimmed. ↵ renames,
- * ⌘K, right click and a tap on touch open the recurrence actions (panels/actions.tsx).
+ * header), habits in their Habits order. Paused ones stay in place, dimmed. ↵ and a tap on
+ * touch rename; ⌘K, right click and a long press on touch open the recurrence actions
+ * (panels/actions.tsx).
  */
 export function RecurrencesView(_props: { list: List }) {
   const recurrences = useQuery(api.recurrences.list, {});
@@ -90,7 +92,11 @@ function RecurrenceRow({ item, color }: { item: Recurrence; color: string }) {
   const write = useWrite();
   const rule = ruleLabel(item);
   const select = () => useApp.getState().select(item._id);
-  const tap = useRowTap(item._id, () => openActions(item._id));
+  const tap = useRowTap(item._id);
+  const hold = rowHold(() => {
+    select();
+    openActions(item._id);
+  });
   return (
     <div
       ref={ref}
@@ -101,14 +107,17 @@ function RecurrenceRow({ item, color }: { item: Recurrence; color: string }) {
       onMouseDown={(event) => {
         if (event.button === 0) select();
       }}
-      onPointerDown={tap.onPointerDown}
+      onPointerDown={(event) => {
+        tap.onPointerDown();
+        hold(event);
+      }}
       onClick={tap.onClick}
       onDoubleClick={(event) => {
         if (startsRename(event, editing)) actions.rename(item._id);
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        // A long press on touch can fire this too; the sheet opens on a tap there.
+        // A long press on touch can fire this too; the hold opens the drawer there.
         if (isTouch()) return;
         select();
         openActions(item._id);

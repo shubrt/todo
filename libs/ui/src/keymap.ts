@@ -152,7 +152,7 @@ export function useWorkspaceKeys(context: WorkspaceContext) {
 }
 
 /**
- * ⌘N, and the rail's "+" on touch: the new-row editor in the open list. Wichtig, Verlauf and
+ * ⌘N, and the round "+" on touch: the new-row editor in the open list. Wichtig, Verlauf and
  * Wiederholungen have no new row, so it switches to the default list first.
  */
 export function startNewTask({
