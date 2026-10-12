@@ -7,12 +7,15 @@ import { publicJwks, sha256 } from "./authCrypto";
 import {
   canonicalJson,
   applicationKey,
+  corsHeaders,
   desktopCallbackLocation,
   errorResponse,
   jsonResponse,
+  preflightResponse,
   readJson,
   routeCommand,
   routeRead,
+  webAppOrigin,
 } from "./httpHelpers";
 
 const http = httpRouter();
@@ -32,13 +35,14 @@ http.route({
   }),
 });
 
-// Shoo's redirect_uri. It cannot exchange the code (no verifier); it only bounces to the desktop.
+// Shoo's redirect_uri. It cannot exchange the code (no verifier); it only bounces to the desktop
+// loopback or, for a "web." state, to the web app at WEB_APP_ORIGIN.
 http.route({
   path: "/auth/desktop/callback",
   method: "GET",
   handler: httpAction(async (_ctx, request) => {
     const headers = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
-    const location = desktopCallbackLocation(new URL(request.url));
+    const location = desktopCallbackLocation(new URL(request.url), webAppOrigin());
     if (location) return new Response(null, { status: 302, headers: { ...headers, location } });
     return new Response(
       "Ungültige Anmeldeantwort. Bitte die Anmeldung in der Todo-App neu starten.",
@@ -54,7 +58,11 @@ http.route({
   }),
 });
 
-/** POST JSON auth endpoint with the shared error shape and request logging. */
+/**
+ * POST JSON auth endpoint with the shared error shape and request logging. Success and error
+ * responses carry CORS headers for WEB_APP_ORIGIN, so the web app also sees a 401; an OPTIONS
+ * route answers the browser's preflight. /api/v1 has no CORS.
+ */
 function authRoute(path: string, run: (ctx: ActionCtx, request: Request) => Promise<unknown>) {
   const operation = `auth.${path.slice("/auth/".length)}`;
   http.route({
@@ -62,12 +70,13 @@ function authRoute(path: string, run: (ctx: ActionCtx, request: Request) => Prom
     method: "POST",
     handler: httpAction(async (ctx, request) => {
       const requestId = crypto.randomUUID();
+      const cors = corsHeaders(request, webAppOrigin());
+      let response: Response;
       try {
-        const result = await run(ctx, request);
+        response = jsonResponse(await run(ctx, request));
         logEvent({ service: "todo-convex", operation, outcome: "ok", requestId });
-        return jsonResponse(result);
       } catch (error) {
-        const response = errorResponse(error, requestId);
+        response = errorResponse(error, requestId);
         logEvent({
           service: "todo-convex",
           operation,
@@ -75,9 +84,15 @@ function authRoute(path: string, run: (ctx: ActionCtx, request: Request) => Prom
           requestId,
           errorCode: String(response.status),
         });
-        return response;
       }
+      for (const [name, value] of Object.entries(cors)) response.headers.set(name, value);
+      return response;
     }),
+  });
+  http.route({
+    path,
+    method: "OPTIONS",
+    handler: httpAction(async (_ctx, request) => preflightResponse(request, webAppOrigin())),
   });
 }
 
