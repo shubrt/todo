@@ -1,0 +1,717 @@
+/* todo for macOS, adapted for touch (the iPhone) at the end. Values from the approved mocks
+   (/tmp/todo-design/build.mjs). No continuously repainting animations: tooltips only use a
+   one-shot visibility delay. */
+
+:root {
+  color-scheme: dark;
+  --bg: #000;
+  --t1: #fff;
+  --t2: rgba(255, 255, 255, 0.58);
+  --t3: rgba(255, 255, 255, 0.36);
+  --line: rgba(255, 255, 255, 0.1);
+  --sel: rgba(255, 255, 255, 0.08);
+  --edit: rgba(255, 255, 255, 0.24);
+  /* Panels and the toast. */
+  --surface: #161616;
+  --surface-line: rgba(255, 255, 255, 0.15);
+  /* Tooltips. */
+  --tip: #1c1c1e;
+  --tip-line: rgba(255, 255, 255, 0.14);
+  --today: #ff9f0a;
+  --late: #ff6961;
+  --danger: #ff6961;
+  --inbox: #0a84ff;
+  --ok: #30d158;
+  --wait: #ffd60a;
+  --off: #ff453a;
+  /* List color of a row or section; set inline per row (style="--acc: …"). */
+  --acc: #8e8e93;
+  /* Vertical padding of a row: 28px rows on the Mac, 36px on touch. */
+  --row-pad: 4px;
+  --font:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--t1);
+  font: 13px/1.4 var(--font);
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+  user-select: none;
+}
+button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: default;
+}
+input {
+  font: inherit;
+  color: inherit;
+  user-select: text;
+}
+svg.lucide {
+  display: block;
+  flex: none;
+  stroke-width: 1.9;
+}
+kbd {
+  padding: 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--t3);
+}
+.emo {
+  font-size: 15px;
+  line-height: 1;
+}
+.emo-s {
+  font-size: 12px;
+  line-height: 1;
+}
+/* Initial of a list without emoji. */
+.lg {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.13);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.85);
+}
+.late {
+  color: var(--late);
+}
+.today {
+  color: var(--today);
+}
+
+/* Window */
+
+.app {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  white-space: nowrap;
+}
+
+/* Title bar: drag region with room for the native traffic lights on the left. */
+.tb {
+  flex: none;
+  position: relative;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 78px;
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+/* Centered over the whole bar; the padding keeps long names clear of the traffic lights and
+   the status dot, and the name truncates. */
+.ttl {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 84px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  pointer-events: none;
+}
+.ttl .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ttl .emo {
+  flex: none;
+  font-size: 14px;
+}
+.ttl .variant {
+  flex: none;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--t3);
+}
+/* Sync status dot where the pin used to be. */
+.st {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  -webkit-app-region: no-drag;
+}
+.st i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.st.wait i {
+  background: var(--wait);
+}
+.st.off i {
+  background: var(--off);
+}
+.sttip,
+.tip {
+  position: absolute;
+  z-index: 30;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--tip-line);
+  border-radius: 6px;
+  background: var(--tip);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: #fff;
+  visibility: hidden;
+  pointer-events: none;
+}
+.sttip {
+  right: 24px;
+}
+/* Only with a real hover: a tap on touch would leave a sticky one behind. */
+@media (hover: hover) {
+  .st:hover .sttip,
+  .ri:hover .tip {
+    visibility: visible;
+    transition: visibility 0s 0.4s;
+  }
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sidebar: favorites as emoji, settings at the bottom. */
+.side {
+  flex: none;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0 12px;
+  border-right: 1px solid var(--line);
+}
+/* The lists scroll (without a scrollbar) when the window is too short; settings stays. */
+.favs {
+  flex: 0 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.ri {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--t2);
+}
+.ri.on {
+  background: var(--sel);
+  color: #fff;
+}
+.ri .emo {
+  font-size: 17px;
+}
+.ri .lg {
+  width: 20px;
+  height: 20px;
+  font-size: 12px;
+}
+.ri.sm {
+  height: 34px;
+  color: var(--t3);
+}
+.ri.sm.on {
+  color: #fff;
+}
+/* Fixed next to the item (placeTip in app.tsx), so the scrolling favorites do not clip it. */
+.tip {
+  position: fixed;
+  left: var(--tip-x);
+  top: var(--tip-y);
+  padding: 4px 8px;
+}
+.side .grow {
+  flex: 1;
+}
+.side .sl {
+  flex: none;
+  width: 24px;
+  height: 1px;
+  margin: 5px 0;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* List area */
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 12px;
+}
+.sec {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 5px 0 -1px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+/* Collapsed headers in a row: the margins cancel out, leaving the mock's 10px between them. */
+.sec + .sec {
+  margin-top: 1px;
+}
+.sec .lbl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sec > :not(.lbl) {
+  flex: none;
+}
+.sec.sel {
+  background: var(--sel);
+}
+.sec .n {
+  font-weight: 400;
+  color: var(--t3);
+}
+.sec .emo {
+  font-size: 13px;
+}
+.sec .lg {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.sec .lucide {
+  color: var(--t3);
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--row-pad) 12px;
+  border-radius: 7px;
+}
+.row.sel {
+  background: var(--sel);
+}
+/* While a new row is being typed, it is the only highlighted row. */
+.list:has(.row.edit) :is(.row, .sec).sel:not(.edit) {
+  background: none;
+}
+.row.dim {
+  opacity: 0.45;
+}
+.row.edit {
+  box-shadow: inset 0 0 0 1px var(--edit);
+}
+/* Checkbox in the list color; done = filled with a black check. */
+.cb {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--acc);
+  border-radius: 4px;
+}
+.done .cb {
+  background: var(--acc);
+}
+.cb .lucide {
+  stroke: #000;
+  stroke-width: 3.4;
+}
+.b {
+  flex: 1;
+  min-width: 0;
+}
+.l1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 20px;
+}
+.done .t {
+  color: var(--t3);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+}
+/* Title field while editing or creating. */
+.ti {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: 14px;
+  line-height: 20px;
+  caret-color: #fff;
+}
+.ti::placeholder {
+  color: var(--t3);
+}
+.subs {
+  padding-left: 24px;
+}
+.subs .t,
+.subs .ti {
+  font-size: 13px;
+  line-height: 19px;
+}
+.subs .ti {
+  height: 19px;
+}
+.subs .cb {
+  width: 13px;
+  height: 13px;
+}
+/* New from the inbox, until the row is selected once. */
+.inb {
+  position: absolute;
+  top: calc(var(--row-pad) + 7px);
+  left: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--inbox);
+}
+/* Details on the right, in fixed order. */
+.row > .acc {
+  flex: none;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--t2);
+}
+.subs .row > .acc {
+  height: 19px;
+}
+.a {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.a .emo {
+  font-size: 13px;
+}
+.a .lg {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+/* Habit dots: the six days before today. */
+.wk {
+  display: flex;
+  gap: 3px;
+}
+.wk i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+}
+.wk i.on {
+  background: var(--acc);
+}
+.empty {
+  padding: 4px 12px 10px 36px;
+  font-size: 13px;
+  color: var(--t3);
+  white-space: normal;
+}
+
+/* Login and connection states */
+
+.login {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 40px 40px;
+  text-align: center;
+  white-space: normal;
+}
+.login .big {
+  color: #fff;
+}
+.login p {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.login .act {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 0 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+}
+.login .keys {
+  display: flex;
+  gap: 4px;
+}
+.login .keys kbd {
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+}
+.login small,
+.login .link {
+  font-size: 11.5px;
+  color: var(--t3);
+}
+.login .err {
+  font-size: 12.5px;
+  color: var(--late);
+}
+
+/* Error toast */
+
+.toast {
+  position: absolute;
+  z-index: 40;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  width: fit-content;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border: 1px solid var(--surface-line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  font-size: 12.5px;
+  color: #fff;
+  white-space: normal;
+}
+.toast .x {
+  color: var(--danger);
+}
+
+/* Touch (the iPhone). The rules above stay the Mac's; these change sizes, hit areas and safe
+   areas only. useTouchLayer (touch-layer.ts) sets --vv-h, --vv-top and --kb. */
+
+@media (pointer: coarse) {
+  :root {
+    --row-pad: 8px;
+    /* The home indicator's inset, gone while the keyboard is up. */
+    --safe-b: max(0px, calc(env(safe-area-inset-bottom) - var(--kb, 0px)));
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+  body {
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  body,
+  .list,
+  .favs {
+    touch-action: manipulation;
+  }
+  input {
+    -webkit-user-select: text;
+  }
+  /* Fixed to the visual viewport, so it ends where the keyboard starts. */
+  .app {
+    position: fixed;
+    top: var(--vv-top, 0px);
+    left: 0;
+    width: 100%;
+    height: var(--vv-h, 100%);
+    padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
+  /* No traffic lights; the status bar's inset on top. */
+  .tb {
+    height: calc(40px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 12px 0;
+  }
+  /* A tap on the title opens the list switcher (Frame in app.tsx). */
+  .ttl {
+    top: env(safe-area-inset-top);
+    padding: 0 44px;
+    pointer-events: auto;
+  }
+  .ttl > .lucide {
+    color: var(--t3);
+  }
+  /* A 44pt target; a tap shows the bubble for 2 s (StatusDot in app.tsx). */
+  .st::before {
+    content: "";
+    position: absolute;
+    inset: -14px;
+  }
+  .st.show .sttip {
+    visibility: visible;
+  }
+  /* Rail: 36pt items at a 44pt pitch, each with a 48x44 target. */
+  .side,
+  .favs {
+    gap: 8px;
+  }
+  .side {
+    padding-bottom: calc(12px + var(--safe-b));
+  }
+  .ri.sm {
+    height: 36px;
+  }
+  .ri::before {
+    content: "";
+    position: absolute;
+    inset: -4px -6px;
+  }
+  .favs {
+    overscroll-behavior: contain;
+  }
+  .list {
+    padding-bottom: calc(12px + var(--safe-b));
+    overscroll-behavior-y: contain;
+  }
+  /* Section headers as tall as the rows. */
+  .sec {
+    padding: 9px 12px;
+  }
+  /* The checkbox keeps its look; its target is the row's height and 44pt wide (the row and
+     list padding on the left, the gap on the right). Not the editor's <i class="cb">. */
+  button.cb {
+    position: relative;
+  }
+  button.cb::before {
+    content: "";
+    position: absolute;
+    inset: calc(-3px - var(--row-pad)) -10px calc(-3px - var(--row-pad)) -20px;
+  }
+  /* The subtask counter (0/5) as tall as the row. */
+  .row > .acc button.a {
+    position: relative;
+  }
+  .row > .acc button.a::before {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--row-pad)) -6px;
+  }
+  /* The selection only marks what an open sheet or an edit acts on; no keys move it here. */
+  .app:not(:has(.pal-layer)) :is(.row, .sec).sel:not(.edit) {
+    background: none;
+  }
+  /* Keyboard hints in text (wrapped in .kh) and keycaps on the login screen. */
+  .kh,
+  .login .keys {
+    display: none;
+  }
+  .login .act {
+    height: 44px;
+    padding: 0 16px;
+  }
+  .login .link {
+    padding: 12px;
+  }
+  .toast {
+    bottom: calc(16px + var(--safe-b));
+  }
+  /* A row lifted by a long press (drag.ts) floats like the toast; the rows it passes slide
+     out of its way, and their gap is where it lands. */
+  .list[data-dragging] :is(.row, .subs) {
+    position: relative;
+    transition: transform 150ms ease;
+  }
+  .list[data-dragging] [data-lift] {
+    z-index: 1;
+    transition: none;
+    background: var(--surface);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  }
+}

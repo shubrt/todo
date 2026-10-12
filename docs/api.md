@@ -10,7 +10,10 @@ widerruft ihn im selben Abschnitt. Integrationsschlüssel gelten nur unter
 `/api/v1`. Geräteschlüssel und ältere Schlüssel ohne Typ funktionieren hier
 ebenfalls. Ein Convex-Deployment-Key ist ungeeignet. Den Ablauf beschreibt
 [die Desktop-Dokumentation](desktop.md#schlüssel). Alle Anfragen erhalten eine
-Request-ID; Fehler enthalten keine internen Stacktraces.
+Request-ID; Fehler enthalten keine internen Stacktraces. `/api/v1` sendet keine
+CORS-Header. Im Browser kann deshalb kein Skript einer Webseite die Antworten
+lesen. Die Web-App braucht die API nicht, Integrationen außerhalb des Browsers
+betrifft das nicht.
 
 ```http
 Authorization: Bearer todo_<application-key>
@@ -63,7 +66,7 @@ der Seitenleiste. Jede Liste hat `id`, `name`, `emoji` (`null` ohne Emoji),
 `color` als `#rrggbb`, `kind` und `favorite`. Aufgaben gehören in Listen mit
 `kind` `tasks`. Die übrigen Arten sind die festen Listen Habits (`habits`),
 Wichtig (`important`), Verlauf (`history`) und Wiederholungen (`recurrences`).
-Listen anlegen, umbenennen und löschen geht nur in der Desktop-App.
+Listen anlegen, umbenennen und löschen geht nur in der Desktop- und der Web-App.
 
 ```json
 {
@@ -274,6 +277,7 @@ erkennbar. Habits und wiederkehrende Aufgaben tragen `recurrenceId`. Ein
 | 503  | `NOT_CONFIGURED`    | Erforderliche Auth-Konfiguration fehlt                                          |
 | 500  | `INTERNAL_ERROR`    | Interner Fehler; Request-ID für die Diagnose verwenden                          |
 
-Ein normaler HTTP-Aufruf liefert eine Antwort. Live-Updates bekommt nur die
-geöffnete Desktop-App über ihre Convex-Abonnements. Die Anmelde- und
-Geräteendpunkte unter `/auth` beschreibt [die Desktop-Dokumentation](desktop.md#endpunkte-der-app).
+Ein normaler HTTP-Aufruf liefert eine Antwort. Live-Updates bekommen nur die
+geöffneten Apps auf dem Mac und dem iPhone über ihre Convex-Abonnements. Die
+Anmelde- und Geräteendpunkte unter `/auth` beschreibt
+[die Desktop-Dokumentation](desktop.md#endpunkte-der-app).

@@ -1,25 +1,14 @@
-/** Targets the tray menu opens in the window: a special list, the Cmd+P switcher or settings. */
-export type DesktopNavigation = "important" | "history" | "recurrences" | "switcher" | "settings";
-/** Per-Mac window preferences, stored in userData/window.json next to the window bounds. */
-export type DesktopPreferences = {
-  alwaysOnTop: boolean;
-  allSpaces: boolean;
-  launchAtLogin: boolean;
-  shortcut: string;
-};
-export type PublicDesktopState = {
-  configured: boolean;
-  /** App version, e.g. "0.2.0", shown in the settings info section. */
-  version: string;
-  /** Set for dev runs and branch packages so the window can tell them apart from the real app. */
-  variant?: string;
-  cloudUrl?: string;
-  siteUrl?: string;
-  error?: string;
-  preferences: DesktopPreferences;
-};
-/** A new integration key. `key` is the secret: shown once, never stored by the app. */
-export type CreatedIntegrationKey = { id: string; name: string; prefix: string; key: string };
+import type {
+  CreatedIntegrationKey,
+  DesktopNavigation,
+  DesktopPreferences,
+  PlatformState,
+} from "@todo/ui/platform";
+
+// The shared UI owns these types; the main process and preload use them through this file.
+export type { CreatedIntegrationKey, DesktopNavigation, DesktopPreferences };
+/** The window's state: the shared PlatformState, and the Mac always has window preferences. */
+export type PublicDesktopState = PlatformState & { preferences: DesktopPreferences };
 export type DesktopBridge = {
   getState: () => Promise<PublicDesktopState>;
   /** Opens the Shoo login in the system browser and resolves once this Mac holds a device key. */

@@ -69,31 +69,59 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@todo/backend':
-        specifier: workspace:*
-        version: link:../../libs/backend
       '@todo/native-client':
         specifier: workspace:*
         version: link:../../libs/native-client
-      convex:
-        specifier: 'catalog:'
-        version: 1.45.0(react@19.2.3)
-      lucide-react:
-        specifier: 1.41.0
-        version: 1.41.0(react@19.2.3)
+      '@todo/ui':
+        specifier: workspace:*
+        version: link:../../libs/ui
       react:
         specifier: 'catalog:'
         version: 19.2.3
       react-dom:
         specifier: 'catalog:'
         version: 19.2.3(react@19.2.3)
-      zustand:
-        specifier: 5.0.15
-        version: 5.0.15(@types/react@19.2.18)(react@19.2.3)
     devDependencies:
       '@electron/packager':
         specifier: 20.3.0
         version: 20.3.0
+      '@todo/tsconfig':
+        specifier: workspace:*
+        version: link:../../tools/typescript
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+      '@vitejs/plugin-react':
+        specifier: 6.1.1
+        version: 6.1.1(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1))
+      electron:
+        specifier: 44.2.0
+        version: 44.2.0
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.24(@edge-runtime/vm@5.0.0)(@types/node@24.13.3)(esbuild@0.28.2)(happy-dom@20.14.0)(jiti@2.6.1)(typescript@6.0.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1))
+
+  apps/web:
+    dependencies:
+      '@todo/native-client':
+        specifier: workspace:*
+        version: link:../../libs/native-client
+      '@todo/ui':
+        specifier: workspace:*
+        version: link:../../libs/ui
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+    devDependencies:
       '@todo/tsconfig':
         specifier: workspace:*
         version: link:../../tools/typescript
@@ -109,12 +137,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1))
-      electron:
-        specifier: 44.2.0
-        version: 44.2.0
-      esbuild:
-        specifier: 0.28.2
-        version: 0.28.2
       happy-dom:
         specifier: 20.14.0
         version: 20.14.0
@@ -193,6 +215,49 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.1.24(@edge-runtime/vm@5.0.0)(@types/node@24.13.3)(esbuild@0.28.2)(happy-dom@20.14.0)(jiti@2.6.1)(typescript@6.0.3)(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.6.1))
+
+  libs/ui:
+    dependencies:
+      '@todo/backend':
+        specifier: workspace:*
+        version: link:../backend
+      convex:
+        specifier: 'catalog:'
+        version: 1.45.0(react@19.2.3)
+      lucide-react:
+        specifier: 1.41.0
+        version: 1.41.0(react@19.2.3)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      zustand:
+        specifier: 5.0.15
+        version: 5.0.15(@types/react@19.2.18)(react@19.2.3)
+    devDependencies:
+      '@todo/tsconfig':
+        specifier: workspace:*
+        version: link:../../tools/typescript
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      happy-dom:
+        specifier: 20.14.0
+        version: 20.14.0
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

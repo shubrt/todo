@@ -476,6 +476,10 @@ function updateMenu() {
           { role: "selectAll" },
         ],
       },
+      // Dev runs only: DevTools, whose device mode emulates the touch layout.
+      ...(app.isPackaged
+        ? []
+        : [{ label: "Darstellung", submenu: [{ role: "toggleDevTools" as const }] }]),
     ]),
   );
 }

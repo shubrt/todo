@@ -59,8 +59,8 @@ export const deviceToken = internalAction({
 });
 
 /**
- * Desktop login: exchanges the Shoo code with the PKCE verifier that never left the device,
- * maps the verified subject to the owner and mints a key named `deviceName`.
+ * Login of the desktop and web app: exchanges the Shoo code with the PKCE verifier that never
+ * left the device, maps the verified subject to the owner and mints a key named `deviceName`.
  * kind "device" (default) is the app's own key; "integration" is a key the app creates for a
  * tool after a fresh Shoo login, so a stolen device key alone cannot mint durable keys.
  * redirect_uri is the stable Convex site callback, so client_id and Shoo's pairwise sub stay fixed.

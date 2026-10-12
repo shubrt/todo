@@ -181,15 +181,39 @@ export function routeCommand(method: string, url: URL, body: Record<string, unkn
 }
 
 /**
- * Shoo redirects the browser to the stable site callback; this computes where to bounce it:
- * the desktop loopback listener whose port leads the state ("<port>.<43 base64url>").
+ * The web app's origin from WEB_APP_ORIGIN, read on every request. Only an exact https origin
+ * (as `URL.origin` serializes it, e.g. "https://task.example") counts; absent or anything else
+ * returns null, which turns the web login bounce and CORS off.
+ */
+export function webAppOrigin(): string | null {
+  const value = process.env.WEB_APP_ORIGIN;
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.origin === value ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Shoo redirects the browser to the stable site callback; this computes where to bounce it.
+ * A "<port>.<43 base64url>" state goes to the desktop loopback listener on that port, a
+ * "web.<43 base64url>" state to the fixed `${webOrigin}/auth/callback` (only while it is set).
  * Only code, state and error are forwarded. Returns null for a malformed state or port.
  */
-export function desktopCallbackLocation(url: URL): string | null {
-  const match = url.searchParams.get("state")?.match(/^(\d{4,5})\.[A-Za-z0-9_-]{43}$/);
-  const port = Number(match?.[1]);
-  if (!match || port < 1024 || port > 65535) return null;
-  const target = new URL(`http://127.0.0.1:${port}/callback`);
+export function desktopCallbackLocation(url: URL, webOrigin: string | null): string | null {
+  const prefix = url.searchParams.get("state")?.match(/^(\d{4,5}|web)\.[A-Za-z0-9_-]{43}$/)?.[1];
+  if (!prefix) return null;
+  let target: URL;
+  if (prefix === "web") {
+    if (!webOrigin) return null;
+    target = new URL("/auth/callback", webOrigin);
+  } else {
+    const port = Number(prefix);
+    if (port < 1024 || port > 65535) return null;
+    target = new URL(`http://127.0.0.1:${port}/callback`);
+  }
   for (const [name, max] of [
     ["code", 4096],
     ["state", 64],
@@ -199,6 +223,29 @@ export function desktopCallbackLocation(url: URL): string | null {
     if (value !== null) target.searchParams.set(name, value.slice(0, max));
   }
   return target.href;
+}
+
+/**
+ * CORS headers for the auth POST routes: only the web app's exact origin may read responses.
+ * Never allows credentials; the web app sends its device key as a bearer header.
+ */
+export function corsHeaders(request: Request, webOrigin: string | null): Record<string, string> {
+  return webOrigin && request.headers.get("origin") === webOrigin
+    ? { vary: "Origin", "access-control-allow-origin": webOrigin }
+    : { vary: "Origin" };
+}
+
+/** Answers the browser's preflight for an auth POST route; a foreign origin gets no allowance. */
+export function preflightResponse(request: Request, webOrigin: string | null): Response {
+  const headers = corsHeaders(request, webOrigin);
+  if (headers["access-control-allow-origin"])
+    Object.assign(headers, {
+      "access-control-allow-methods": "POST",
+      // Listed explicitly: "*" never covers Authorization.
+      "access-control-allow-headers": "authorization, content-type",
+      "access-control-max-age": "600",
+    });
+  return new Response(null, { status: 204, headers });
 }
 
 export function errorResponse(error: unknown, requestId: string): Response {

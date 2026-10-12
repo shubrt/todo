@@ -1,6 +1,6 @@
 # todo für macOS
 
-Die Desktop-App ist der einzige Client. Sie zeigt die Convex-Aufgaben in einem kleinen schwebenden Fenster, das sich wie Raycast ganz mit der Tastatur bedienen lässt. Einen zweiten Markdown-Bestand oder einen Offline-Aufgabenspeicher gibt es nicht.
+Die Desktop-App zeigt die Convex-Aufgaben in einem kleinen schwebenden Fenster, das sich wie Raycast ganz mit der Tastatur bedienen lässt. Daneben gibt es die [Web-App](web.md) für das iPhone. Beide verwenden dieselbe Oberfläche aus `libs/ui`, die Desktop-App ist ihre Electron-Hülle unter `apps/desktop`. Einen zweiten Markdown-Bestand oder einen Offline-Aufgabenspeicher gibt es nicht.
 
 ## Starten und bauen
 
@@ -14,7 +14,7 @@ vp run package
 
 Die Root-Befehle rufen `dev`, `build` und `package` von `@todo/desktop` auf. Im Verzeichnis `apps/desktop` gehen auch `node scripts/dev.mjs`, `node scripts/build.mjs` und `node scripts/package.mjs`.
 
-`dev` baut Main und Preload, startet einen lokalen Vite-Server und öffnet das Electron-Fenster. Rendereränderungen erscheinen per HMR, Änderungen an Main oder Preload brauchen einen Neustart des Befehls. Jeder Worktree startet als eigene Variante mit dem Branchnamen, etwa `todo login-fix` mit `✓ login-fix` im Tray. Eine Variante hat eigene Daten und damit eine eigene Anmeldung, keinen globalen Kurzbefehl und endet mit dem Dev-Befehl. Jede Anmeldung in einer Variante legt einen eigenen Geräteschlüssel an, der nie abläuft. Das Löschen des Worktrees widerruft ihn nicht. Vorher in der Variante unter Einstellungen "Abmelden" wählen. Einen vergessenen Schlüssel widerruft man in einer anderen angemeldeten App unter Einstellungen > Schlüssel, siehe [Schlüssel](#schlüssel). `TODO_DESKTOP_VARIANT=<name>` überschreibt den Namen und erzeugt bei `package` eine getrennte App neben der normalen.
+`dev` baut Main und Preload, startet einen lokalen Vite-Server und öffnet das Electron-Fenster. Änderungen an der Oberfläche in `libs/ui` und am Renderer-Einstieg in `apps/desktop/src/renderer` erscheinen per HMR, Änderungen an Main oder Preload brauchen einen Neustart des Befehls. Dev-Läufe haben ein zusätzliches Menü "Darstellung" mit den Entwicklertools (`⌥⌘I`). Deren Gerätemodus zeigt die Touch-Oberfläche des iPhones, siehe [Web-App](web.md#entwicklung). Gepackte Apps haben das Menü nicht. Jeder Worktree startet als eigene Variante mit dem Branchnamen, etwa `todo login-fix` mit `✓ login-fix` im Tray. Eine Variante hat eigene Daten und damit eine eigene Anmeldung, keinen globalen Kurzbefehl und endet mit dem Dev-Befehl. Jede Anmeldung in einer Variante legt einen eigenen Geräteschlüssel an, der nie abläuft. Das Löschen des Worktrees widerruft ihn nicht. Vorher in der Variante unter Einstellungen "Abmelden" wählen. Einen vergessenen Schlüssel widerruft man in einer anderen angemeldeten App unter Einstellungen > Schlüssel, siehe [Schlüssel](#schlüssel). `TODO_DESKTOP_VARIANT=<name>` überschreibt den Namen und erzeugt bei `package` eine getrennte App neben der normalen.
 
 Der Paketbefehl erstellt:
 
@@ -35,7 +35,7 @@ Der Befehl installiert den aktuellen Stand von `main` als `/Applications/todo.ap
 2. Er führt dort `vp install`, `vp run qa` und `vp run package` aus.
 3. Erst wenn alles geklappt hat, beendet er ein laufendes todo, ersetzt die App und startet die neue Version. Scheitert ein Schritt davor, bleibt die installierte App unverändert. Läuft die neue Version fünf Sekunden nach dem Start nicht, kommt die bisherige zurück.
 
-Zwei Läufe gleichzeitig verhindert eine Sperre. Automatische Updates gibt es nicht. Nach jedem Merge nach `main` reicht ein erneuter Aufruf.
+Zwei Läufe gleichzeitig verhindert eine Sperre. Automatische Updates gibt es nicht. Nach jedem Merge nach `main` reicht ein erneuter Aufruf. Die Web-App veröffentlicht Railway nach einem Merge, der sie betrifft, von selbst, siehe [Hosting](web.md#hosting).
 
 Die App bekommt keine eigene Signatur. Ihr Hauptprogramm ist die unveränderte, ad hoc signierte Electron-Binärdatei. macOS erkennt Apps ohne Apple-Zertifikat für den Schlüsselbund an deren Hash, und der ändert sich nur mit der Electron-Version. Nach einem Update fragt der Schlüsselbund deshalb nicht erneut nach dem Zugriff auf "todo Safe Storage", erst nach einem Wechsel der Electron-Version einmal. Ein selbst signiertes Zertifikat würde daran nichts verbessern, weil jede neue Signatur einen neuen Hash ergibt. Eine selbst gebaute App trägt keine Download-Markierung, Gatekeeper prüft sie deshalb nicht.
 
@@ -45,7 +45,7 @@ Ohne gespeicherte Verbindung zeigt das Fenster nur die Anmeldung, ohne Seitenlei
 
 1. Der Main-Prozess öffnet einen HTTP-Listener auf `127.0.0.1` mit zufälligem Port. Er erzeugt einen PKCE-Verifier aus 48 Zufallsbytes und einen State der Form `<port>.<zufall>`.
 2. Der Standardbrowser öffnet `https://shoo.dev/authorize` mit `client_id=origin:<site>`, `redirect_uri=<site>/auth/desktop/callback` und der S256-Challenge.
-3. Nach der Anmeldung leitet Shoo auf `GET /auth/desktop/callback` der Convex-Site. Der Endpunkt prüft das Format des State und leitet mit HTTP 302 an `http://127.0.0.1:<port>/callback` weiter. Dabei reicht er nur `code`, `state` und `error` durch.
+3. Nach der Anmeldung leitet Shoo auf `GET /auth/desktop/callback` der Convex-Site. Der Endpunkt prüft das Format des State und leitet mit HTTP 302 an `http://127.0.0.1:<port>/callback` weiter. Dabei reicht er nur `code`, `state` und `error` durch. Einen State `web.<zufall>` der Web-App leitet er stattdessen an `<WEB_APP_ORIGIN>/auth/callback` weiter, siehe [Web-App](web.md#anmelden).
 4. Die App vergleicht den State und schickt Code, Verifier und einen Gerätenamen wie `todo auf <Rechnername>` an `POST /auth/desktop-login`.
 5. Convex tauscht den Code bei Shoo ein, prüft ID-Token und Besitzerzuordnung und legt einen Geräteschlüssel mit diesem Namen an.
 6. Die App speichert Site-URL und Schlüssel verschlüsselt und verbindet sich.
@@ -79,11 +79,11 @@ Fensterposition, Größe, Vordergrund, Schreibtischverhalten, Kurzbefehl und Aut
 
 Das Backend kennt drei Arten von Schlüsseln:
 
-| Art         | `kind`        | Entsteht                                      | Gilt für                                     |
-| ----------- | ------------- | --------------------------------------------- | -------------------------------------------- |
-| Gerät       | `device`      | Bei der Anmeldung einer App oder Variante     | `/auth/device-token` und `/api/v1`           |
-| Integration | `integration` | Über "Neuer Integrationsschlüssel"            | Nur `/api/v1`, `/auth/device-token` gibt 403 |
-| Ohne Typ    | fehlt         | Vor Einführung der Arten, etwa in der Web-App | Wie Geräteschlüssel                          |
+| Art         | `kind`        | Entsteht                                               | Gilt für                                     |
+| ----------- | ------------- | ------------------------------------------------------ | -------------------------------------------- |
+| Gerät       | `device`      | Bei der Anmeldung einer App oder Variante              | `/auth/device-token` und `/api/v1`           |
+| Integration | `integration` | Über "Neuer Integrationsschlüssel"                     | Nur `/api/v1`, `/auth/device-token` gibt 403 |
+| Ohne Typ    | fehlt         | Vor Einführung der Arten, etwa in der früheren Web-App | Wie Geräteschlüssel                          |
 
 Einstellungen > Schlüssel listet alle aktiven Schlüssel aller Arten außer dem eigenen, jeweils mit Name und Erstelldatum wie `seit 2. Okt.`. Den Namen des eigenen Schlüssels zeigt Info > Dieser Mac. Er endet nur mit "Abmelden". Steht die Auswahl auf einem anderen Schlüssel, zeigt die Zeile `⌘⌫`, und `⌘⌫` widerruft ihn sofort und ohne Rückfrage. Convex liest die Schlüsselzeile bei jedem Zugriff, eine widerrufene App verliert deshalb auch ihre laufenden Abonnements.
 
@@ -104,17 +104,21 @@ Die App speichert den Schlüssel nicht. Er liegt nur im Zustand des Panels und i
 
 Alle Pfade liegen auf der Convex-Site. JSON-Fehler haben die Form `{ "error": { "code", "message" }, "requestId" }` wie in der [HTTP-API](api.md#fehler).
 
-| Methode und Pfad             | Zweck                                                                                                                                                                    |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /auth/desktop/callback` | Redirect-Ziel für Shoo. Leitet an den Loopback-Listener weiter, ungültiger State ergibt 400                                                                              |
-| `POST /auth/desktop-login`   | Body `{ code, codeVerifier, deviceName, kind? }`. `kind` ist `device` (Standard) oder `integration`, `deviceName` wird zum Schlüsselnamen. Liefert `{ key, prefix, id }` |
-| `POST /auth/device-token`    | Bearer-Geräteschlüssel oder Schlüssel ohne Typ. Liefert das kurzlebige Convex-JWT. Integrationsschlüssel erhalten 403 `FORBIDDEN`                                        |
-| `POST /auth/device-revoke`   | Bearer-Schlüssel jeder Art. Widerruft genau diesen Schlüssel, liefert `{ "revoked": true }`                                                                              |
-| `GET /.well-known/jwks.json` | Öffentliche Schlüssel, mit denen Convex die JWTs prüft                                                                                                                   |
+| Methode und Pfad             | Zweck                                                                                                                                                                                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /auth/desktop/callback` | Redirect-Ziel für Shoo. Leitet `<port>.<zufall>` an den Loopback-Listener weiter, `web.<zufall>` an `<WEB_APP_ORIGIN>/auth/callback`. Ungültiger State oder `web.` ohne gültiges `WEB_APP_ORIGIN` ergibt 400 |
+| `POST /auth/desktop-login`   | Body `{ code, codeVerifier, deviceName, kind? }`. `kind` ist `device` (Standard) oder `integration`, `deviceName` wird zum Schlüsselnamen. Liefert `{ key, prefix, id }`                                     |
+| `POST /auth/device-token`    | Bearer-Geräteschlüssel oder Schlüssel ohne Typ. Liefert das kurzlebige Convex-JWT. Integrationsschlüssel erhalten 403 `FORBIDDEN`                                                                            |
+| `POST /auth/device-revoke`   | Bearer-Schlüssel jeder Art. Widerruft genau diesen Schlüssel, liefert `{ "revoked": true }`                                                                                                                  |
+| `GET /.well-known/jwks.json` | Öffentliche Schlüssel, mit denen Convex die JWTs prüft                                                                                                                                                       |
+
+Die drei POST-Routen beantworten außerdem `OPTIONS` als CORS-Preflight. Ihre Antworten tragen immer `Vary: Origin`. `Access-Control-Allow-Origin` steht nur bei einer Anfrage von genau `WEB_APP_ORIGIN`, auch auf Fehlerantworten, damit die Web-App einen 401 lesen kann. Credentials erlaubt keine Route. Die Desktop-App schickt keine Origin und bekommt deshalb keine CORS-Header.
 
 Liste und Widerruf in den Einstellungen laufen nicht über HTTP, sondern über die Convex-Funktionen `auth.listApiKeys` und `auth.revokeApiKey`, siehe [Architektur](architecture.md#identität).
 
 ## Bedienung
+
+Dieser Abschnitt beschreibt den Mac. Was auf dem iPhone anders ist, steht unter [Bedienung auf dem iPhone](web.md#bedienung-auf-dem-iphone).
 
 Das Fenster besteht aus Titelleiste, Seitenleiste und der geöffneten Liste. Einen Kopf- oder Fußbereich im Inhalt gibt es nicht. Der Hintergrund ist schwarz, der Text weiß. Eine Fensterfarbe gibt es nicht mehr, stattdessen färbt jede Liste ihre Checkboxen, Habit-Punkte und Wiederholungssymbole.
 
@@ -286,10 +290,10 @@ Die App speichert keine Aufgaben lokal und zeigt Änderungen erst nach erfolgrei
 ## Verifikation
 
 ```bash
-vp test run apps/desktop/test
+vp test run apps/desktop/test libs/ui/test
 ```
 
-Die Tests prüfen die Loopback-Anmeldung mit PKCE, State, Abbruch und Zeitüberschreitung, die Sperre für eine zweite gleichzeitige Shoo-Anmeldung, erlaubte Renderer-Origins und IPC-Argumente samt Schlüsselnamen und Zwischenablagetext, das Laden einer alten `window.json` mit Fensterfarbe, Monitorwechsel, verschlüsselte Speicherung ohne Klartext-Fallback und das Aufräumen beim Wechsel des Convex-Clients. `dates.test.ts` prüft die Datumstexte der Zeilen und das Datumspanel mit getippten Tagen und Uhrzeiten, Vorschlägen und Zurückstellen über die Zeitumstellung hinweg. `ui.test.tsx` bedient das ganze Fenster gegen ein nachgebildetes Convex: Anmeldung, Statuspunkt und Schreibsperre, Seitenleiste und Listensuche, Tastatur und Panels, Einstellungen mit Schlüsseln und alle Arten von Listen.
+Die Tests in `apps/desktop/test` prüfen die Loopback-Anmeldung mit PKCE, State, Abbruch und Zeitüberschreitung, die Sperre für eine zweite gleichzeitige Shoo-Anmeldung, erlaubte Renderer-Origins und IPC-Argumente samt Schlüsselnamen und Zwischenablagetext, das Laden einer alten `window.json` mit Fensterfarbe, Monitorwechsel, verschlüsselte Speicherung ohne Klartext-Fallback und die Meldungen des Main-Prozesses als `PlatformError` im Renderer. Die Oberfläche testet `libs/ui/test`. `client-lifecycle.test.tsx` prüft das Aufräumen beim Wechsel des Convex-Clients, `dates.test.ts` die Datumstexte der Zeilen und das Datumspanel mit getippten Tagen und Uhrzeiten, Vorschlägen und Zurückstellen über die Zeitumstellung hinweg. `ui.test.tsx` bedient das ganze Fenster gegen ein nachgebildetes Convex: Anmeldung, Statuspunkt und Schreibsperre, Seitenleiste und Listensuche, Tastatur und Panels, Einstellungen mit Schlüsseln und alle Arten von Listen. Ein eigener Block prüft die Touch-Bedienung des iPhones und dass sich auf dem Mac dabei nichts ändert.
 
 Build und Tests ersetzen nicht die Prüfung auf einem echten Mac mit eingerichteter Convex-Umgebung. Was dort aussteht, steht in [Verifikation](verification.md). Developer-ID-Signierung, Notarisierung und Verteilung sind noch nicht eingerichtet.
 

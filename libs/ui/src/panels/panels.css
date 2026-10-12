@@ -1,0 +1,267 @@
+/* Raycast-style panels (Panel in panel.tsx). Tokens come from styles.css. */
+
+/* Covers the window; a click on it closes the panels. Over the title bar too, which would
+   otherwise take the click as a window drag. */
+.pal-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  -webkit-app-region: no-drag;
+}
+/* --pal-w is the Panel's `width` prop. */
+.pal {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  width: var(--pal-w);
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 54px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+  font-size: 14px;
+  color: #fff;
+}
+.pal .q {
+  flex: none;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--t3);
+}
+.pal .q input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: 14px;
+  color: #fff;
+  caret-color: #fff;
+}
+.pal .q input::placeholder {
+  color: var(--t3);
+}
+.pal .crumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.pal .crumb .lucide {
+  color: var(--t3);
+}
+.pal .pl {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+.pal .pi {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 10px;
+  border-radius: 8px;
+}
+.pal .pi.sel {
+  background: rgba(255, 255, 255, 0.1);
+}
+.pal .pi.off {
+  opacity: 0.4;
+}
+.pal .pi .ic {
+  flex: none;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.75);
+}
+.pal .pi .pt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pal .pi .emo-s {
+  font-size: 14px;
+}
+.pal .pacc {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--t3);
+}
+.pal .pacc .emo {
+  font-size: 13px;
+}
+/* Star toggle on the highlighted list in ⌘P. */
+.pal .fav {
+  display: flex;
+  color: #fff;
+}
+/* Palette color in Farbe ändern. */
+.pal .swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.pal .keys {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.pal .keys kbd {
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.09);
+  font-size: 11px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.75);
+}
+.pal .pi.danger,
+.pal .pi.danger .ic {
+  color: var(--danger);
+}
+.pal .sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--line);
+}
+/* Section label (Settings). */
+.pal .ps {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+.pal .pi.info {
+  height: 26px;
+  font-size: 12.5px;
+  color: var(--t2);
+}
+.pal .pi.info .pacc {
+  color: var(--t3);
+}
+.pal .pe {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--t3);
+}
+.pal .hint {
+  padding: 2px 16px 14px;
+  font-size: 12px;
+  color: var(--t3);
+  white-space: normal;
+}
+.pal .hint .err {
+  color: var(--danger);
+}
+/* A new integration key, shown once to copy. */
+.pal .secret {
+  display: block;
+  margin-bottom: 6px;
+  font:
+    12px/1.5 ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  color: #fff;
+  word-break: break-all;
+  user-select: text;
+}
+/* Settings: denser rows. */
+.pal.set .q {
+  height: 42px;
+}
+.pal.set .pi {
+  height: 28px;
+}
+.pal.set .ps {
+  height: 22px;
+  padding-top: 2px;
+}
+.pal.set .pi.info {
+  height: 22px;
+}
+.pal.set .sep {
+  margin: 4px;
+}
+
+/* Touch: a sheet at the bottom, above the home indicator and the keyboard (touch-layer.ts), with
+   44pt rows and no keycaps. */
+@media (pointer: coarse) {
+  .pal {
+    top: auto;
+    bottom: calc(8px + var(--safe-b));
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
+    width: auto;
+    max-width: none;
+    /* The title bar stays visible above it. */
+    max-height: calc(100% - env(safe-area-inset-top) - 56px - var(--safe-b));
+    transform: none;
+  }
+  .pal .pi,
+  .pal.set .pi,
+  .pal .pe {
+    height: 44px;
+  }
+  .pal .keys {
+    display: none;
+  }
+  /* What the sheet acts on, in place of the search field (Panel `header`). */
+  .pal .q .hd {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 600;
+    color: #fff;
+  }
+  /* Datum wählen: the transparent native picker covers the row and takes the tap. */
+  .pal .pi {
+    position: relative;
+  }
+  .pal .pi .pick {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    font-size: 16px;
+  }
+  .pal .pl {
+    touch-action: manipulation;
+    overscroll-behavior: contain;
+  }
+  .pal .secret {
+    -webkit-user-select: text;
+  }
+}

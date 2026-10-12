@@ -1,17 +1,28 @@
 # Architektur
 
-| Paket                | Aufgabe                                                                        |
-| -------------------- | ------------------------------------------------------------------------------ |
-| `apps/desktop`       | Electron-Menüleisten-App, schwebendes macOS-Fenster, Anmeldung, Gerätespeicher |
-| `libs/backend`       | Convex-Datenmodell, Fachoperationen, Autorisierung, HTTP-API und Zeitsteuerung |
-| `libs/contracts`     | Validierte externe Eingaben und gemeinsame Typen                               |
-| `libs/native-client` | Verbindungsdaten, Adressprüfung und Token-Erneuerung                           |
-| `libs/logging`       | Strukturierte Console-Ereignisse für Convex                                    |
-| `tools/typescript`   | Gemeinsame TypeScript-Konfiguration                                            |
+| Paket                | Aufgabe                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| `libs/ui`            | Gemeinsame Oberfläche beider Apps, bekommt von ihrer Hülle ein `Platform`-Objekt        |
+| `apps/desktop`       | Electron-Hülle: Menüleisten-App, schwebendes macOS-Fenster, Anmeldung, Gerätespeicher   |
+| `apps/web`           | Browser-Hülle für das iPhone: Anmeldung, Geräteschlüssel in localStorage, Caddy-Hosting |
+| `libs/backend`       | Convex-Datenmodell, Fachoperationen, Autorisierung, HTTP-API und Zeitsteuerung          |
+| `libs/contracts`     | Validierte externe Eingaben und gemeinsame Typen                                        |
+| `libs/native-client` | Verbindungsdaten, Adressprüfung, Gerätelogin und Token-Erneuerung                       |
+| `libs/logging`       | Strukturierte Console-Ereignisse für Convex                                             |
+| `tools/typescript`   | Gemeinsame TypeScript-Konfiguration                                                     |
 
-Der Renderer der Desktop-App abonniert Convex-Queries direkt. Die HTTP-API
+Die Oberfläche aus `libs/ui` abonniert Convex-Queries direkt. Die HTTP-API
 verwendet dieselben fachlichen Mutationen. Eine Änderung über die API erscheint
-deshalb sofort im geöffneten Fenster.
+deshalb sofort in jeder geöffneten App.
+
+Jede Hülle ruft `renderApp(platform)` auf. Das `Platform`-Objekt liefert
+Anmeldung, Verbindungsstatus und kurzlebige JWTs. Nur die Mac-Hülle hat dazu
+Fenstereinstellungen, Ausblenden, Menüleistenmenü, Emoji-Auswahl,
+Integrationsschlüssel und Zwischenablage. Was eine Hülle nicht hat, blendet die
+Oberfläche aus. `kind` (`mac` oder `web`) wählt gerätebezogene Texte wie
+"Dieser Mac". Das Touch-Verhalten hängt dagegen an `(pointer: coarse)`, damit
+der Mac unverändert bleibt. Die Web-App ist eine statische Seite ohne eigenen
+Servercode, Caddy liefert sie aus.
 
 ## Identität
 
@@ -25,6 +36,19 @@ des State und leitet den Browser an den Loopback-Listener der App weiter. Den
 Code tauscht er nicht ein, denn den PKCE-Verifier kennt nur die App. Erst
 `POST /auth/desktop-login` erhält Code und Verifier zusammen. Ein abgefangener
 Code allein nützt nichts.
+
+Die Web-App meldet sich über denselben Callback an, mit derselben `client_id`
+und Redirect-URI. Shoo liefert ihr deshalb dasselbe `sub` wie dem Mac. Ihr
+State hat die Form `web.<zufall>`. Für ihn leitet der Callback fest auf
+`<WEB_APP_ORIGIN>/auth/callback` weiter, nie auf eine Adresse aus der Anfrage.
+Ist `WEB_APP_ORIGIN` nicht gesetzt oder keine exakte https-Origin, antwortet er
+mit HTTP 400. Der Verifier bleibt im Browser, und die Web-App erhält wie der Mac
+einen Geräteschlüssel. Für den Browser senden nur die drei POST-Routen
+`/auth/desktop-login`, `/auth/device-token` und `/auth/device-revoke`
+CORS-Header, auf Erfolgs- und Fehlerantworten, dazu je eine OPTIONS-Route für
+den Preflight. `Access-Control-Allow-Origin` steht nur bei genau der Origin aus
+`WEB_APP_ORIGIN`, Credentials erlaubt keine Route. `/api/v1`, der Callback und
+der JWKS-Endpunkt senden keine CORS-Header.
 
 Convex tauscht den Code bei Shoo ein und prüft das ID-Token selbst.
 `SHOO_OWNER_SUBJECTS` ordnet das `sub` für die Site-Origin der internen
@@ -43,7 +67,10 @@ Für Convex-Abonnements tauscht die App den Schlüssel über
 `POST /auth/device-token` gegen ein ES256-JWT mit `apiKeyId`, das höchstens
 fünf Minuten gilt. Öffentliche Fachfunktionen akzeptieren nur solche
 Geräte-JWTs und lesen die Schlüsselzeile bei jedem Zugriff. Ein Widerruf
-beendet dadurch auch laufende Abonnements. Browser-Sitzungen gibt es nicht.
+beendet dadurch auch laufende Abonnements. Sitzungen gibt es nicht, auch nicht
+im Browser. Die Web-App hält wie der Mac einen Geräteschlüssel und holt damit
+JWTs. Sie speichert ihn im Klartext in localStorage, geschützt nur durch ihre
+Content Security Policy und den Host, siehe [Web-App](web.md#grenzen).
 Integrationsschlüssel bekommen an `/auth/device-token` HTTP 403 und damit nie
 ein JWT. Ein entwendeter Integrationsschlüssel kann deshalb keine anderen
 Schlüssel lesen oder widerrufen.
@@ -63,7 +90,8 @@ App lehnt sie mit `INVALID_INPUT` ab, dafür gibt es "Abmelden".
 Beide Funktionen prüfen das Geräte-JWT wie `requireOwner` und arbeiten nur
 auf Schlüsseln desselben Besitzers. Anmeldung und Schlüsselverwaltung aus
 Sicht der App beschreibt die Desktop-Dokumentation unter
-[Anmelden](desktop.md#anmelden) und [Schlüssel](desktop.md#schlüssel).
+[Anmelden](desktop.md#anmelden) und [Schlüssel](desktop.md#schlüssel), die
+Anmeldung auf dem iPhone [Web-App](web.md#anmelden).
 
 ## Listen
 

@@ -115,8 +115,8 @@ auch ihre Vorlage um. Löschen verwirft die offene Instanz, ohne eine Erledigung
 zu erzeugen. Frühere Erledigungen bleiben im Verlauf.
 
 `Europe/Berlin` ist der Startwert für die Zeitzone. Zeitzone und Standardliste
-stehen in der Desktop-App unter Einstellungen > Konto und gelten für alle
-Geräte und Integrationen.
+stehen in beiden Apps unter Einstellungen > Konto und gelten für alle Geräte
+und Integrationen.
 
 ## Abgrenzung
 
@@ -124,7 +124,12 @@ KI-Aufgaben erhalten eine einfache Kennzeichnung. Aufgaben werden nur auf
 ausdrücklichen Wunsch aus Gesprächen abgeleitet. Mögliche inhaltliche Dubletten
 erfordern eine Rückfrage, bevor der Agent einen neuen Eintrag anlegt.
 
-Die App setzt für Änderungen Internet voraus. Einziger Client ist der
-schwebende macOS-Client. Die Web-App und die Expo-App für iOS und Android
-samt Habit-Widgets wurden am 1. Oktober 2026 entfernt. Anbindungen an
-Sprachassistenten stehen noch aus.
+Die App setzt für Änderungen Internet voraus. Clients sind der schwebende
+macOS-Client und eine [Web-App](web.md) für das iPhone mit derselben
+Oberfläche. Die iPhone-App kommt ohne App Store aus. Man fügt sie in Safari zum
+Home-Bildschirm hinzu, sie meldet sich wie der Mac über Shoo an und hält einen
+eigenen Geräteschlüssel. Auf dem iPhone öffnet ein Tipp auf eine Zeile ihre
+Aktionen, langes Drücken sortiert um. Der Mac bleibt dabei unverändert. Einen
+Offline-Modus gibt es auf keinem Gerät. Die frühere Web-App und die Expo-App
+für iOS und Android samt Habit-Widgets wurden am 1. Oktober 2026 entfernt.
+Anbindungen an Sprachassistenten stehen noch aus.

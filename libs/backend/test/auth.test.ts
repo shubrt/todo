@@ -5,7 +5,13 @@ import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { ownerForClaims, publicJwks, sha256, verifyShooToken } from "../convex/authCrypto";
-import { canonicalJson, errorResponse, readJson, routeCommand } from "../convex/httpHelpers";
+import {
+  canonicalJson,
+  errorResponse,
+  readJson,
+  routeCommand,
+  webAppOrigin,
+} from "../convex/httpHelpers";
 
 const modules = import.meta.glob("../convex/**/*.ts");
 const ownerId = "test-owner";
@@ -189,6 +195,128 @@ describe("desktop login", () => {
       expect(response.headers.get("location")).toBeNull();
     }
     expect((await callback("code=abc")).status).toBe(400);
+  });
+
+  it("bounces a web state only to the fixed WEB_APP_ORIGIN callback", async () => {
+    const t = convexTest(schema, modules);
+    const callback = (query: string) => t.fetch(`/auth/desktop/callback?${query}`);
+    const web = `web.${"s".repeat(43)}`;
+    vi.stubEnv("WEB_APP_ORIGIN", undefined);
+    expect((await callback(`code=abc&state=${web}`)).status).toBe(400);
+    vi.stubEnv("WEB_APP_ORIGIN", "https://task.example");
+    const ok = await callback(`code=abc&state=${web}&iss=https%3A%2F%2Fshoo.dev&extra=1`);
+    expect(ok.status).toBe(302);
+    expect(ok.headers.get("location")).toBe(
+      `https://task.example/auth/callback?code=abc&state=${web}`,
+    );
+    expect((await callback(`state=${web}&error=access_denied`)).headers.get("location")).toBe(
+      `https://task.example/auth/callback?state=${web}&error=access_denied`,
+    );
+    for (const bad of [
+      `web.${"s".repeat(42)}`,
+      `web.${"s".repeat(42)}%2B`,
+      `WEB.${"s".repeat(43)}`,
+      `webapp.${"s".repeat(43)}`,
+      `web-${"s".repeat(43)}`,
+    ]) {
+      const response = await callback(`code=abc&state=${bad}`);
+      expect(response.status).toBe(400);
+      expect(response.headers.get("location")).toBeNull();
+    }
+    const desktop = await callback(`code=abc&state=${state}`);
+    expect(new URL(desktop.headers.get("location")!).origin).toBe("http://127.0.0.1:51234");
+  });
+
+  it("accepts only an exact https origin as WEB_APP_ORIGIN", () => {
+    for (const value of ["https://task.example", "https://task.example:8443"]) {
+      vi.stubEnv("WEB_APP_ORIGIN", value);
+      expect(webAppOrigin()).toBe(value);
+    }
+    for (const value of [
+      undefined,
+      "",
+      "https://task.example/",
+      "https://task.example/app",
+      "http://task.example",
+      "http://localhost:5173",
+      "https://u@task.example",
+      "https://task.example?x=1",
+      "https://task.example#x",
+      "https://Task.example",
+      "https://task.example:443",
+      "task.example",
+      "*",
+      "null",
+    ]) {
+      vi.stubEnv("WEB_APP_ORIGIN", value);
+      expect(webAppOrigin(), String(value)).toBeNull();
+    }
+  });
+
+  it("answers CORS for exactly WEB_APP_ORIGIN on the three auth routes, including errors", async () => {
+    const { t, login } = await stubShoo("desktop-sub");
+    const origin = "https://task.example";
+    const allowed = (response: Response) => response.headers.get("access-control-allow-origin");
+    const preflight = (path: string, from: string) =>
+      t.fetch(path, {
+        method: "OPTIONS",
+        headers: {
+          origin: from,
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "authorization",
+        },
+      });
+    const paths = ["/auth/desktop-login", "/auth/device-token", "/auth/device-revoke"];
+    vi.stubEnv("WEB_APP_ORIGIN", undefined);
+    for (const path of paths) expect(allowed(await preflight(path, origin))).toBeNull();
+    vi.stubEnv("WEB_APP_ORIGIN", origin);
+    for (const path of paths) {
+      const response = await preflight(path, origin);
+      expect(response.status).toBe(204);
+      expect(Object.fromEntries(response.headers)).toMatchObject({
+        "access-control-allow-origin": origin,
+        "access-control-allow-methods": "POST",
+        "access-control-allow-headers": "authorization, content-type",
+        "access-control-max-age": "600",
+        vary: "Origin",
+      });
+      expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+      const foreign = await preflight(path, "https://evil.example");
+      expect(foreign.status).toBe(204);
+      expect(allowed(foreign)).toBeNull();
+      expect(foreign.headers.get("access-control-allow-methods")).toBeNull();
+    }
+
+    const web = await t.fetch("/auth/desktop-login", {
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ code: "web", codeVerifier: verifier, deviceName: "todo auf iPhone" }),
+    });
+    expect(web.status).toBe(200);
+    expect(allowed(web)).toBe(origin);
+    expect(web.headers.get("vary")).toBe("Origin");
+    const unauthenticated = await t.fetch("/auth/device-token", {
+      method: "POST",
+      headers: { origin, authorization: "Bearer nope" },
+    });
+    expect(unauthenticated.status).toBe(401);
+    expect(allowed(unauthenticated)).toBe(origin);
+    const foreign = await t.fetch("/auth/device-revoke", {
+      method: "POST",
+      headers: { origin: "https://evil.example", authorization: "Bearer nope" },
+    });
+    expect(foreign.status).toBe(401);
+    expect(allowed(foreign)).toBeNull();
+    const desktop = await login({ code: "mac" });
+    expect(desktop.status).toBe(200);
+    expect(allowed(desktop)).toBeNull();
+
+    const { key } = await web.json();
+    const api = await t.fetch("/api/v1/tasks", {
+      headers: { origin, authorization: `Bearer ${key}` },
+    });
+    expect(api.status).toBe(200);
+    expect(allowed(api)).toBeNull();
   });
 
   it("exchanges the code with the device's verifier and mints a named device key", async () => {

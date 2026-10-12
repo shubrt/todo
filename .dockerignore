@@ -1,0 +1,14 @@
+# Build context of apps/web/Dockerfile: sources only, never secrets or local builds.
+.git
+**/node_modules
+**/dist
+**/.vite
+**/.cache
+**/coverage
+apps/desktop/release
+**/.env*
+!**/.env.example
+**/*.pem
+**/.DS_Store
+.t3code
+.claude

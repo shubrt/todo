@@ -13,7 +13,9 @@ vp run build
 vp run dev
 ```
 
-`dev` startet die Desktop-App, Details stehen in [Desktop](desktop.md). Die
+`dev` startet die Desktop-App, Details stehen in [Desktop](desktop.md).
+`vp run dev:web` startet die Web-App im Vite-Dev-Server, `vp run build:web`
+baut sie nach `apps/web/dist`, siehe [Web-App](web.md#entwicklung). Die
 Tests brauchen weder Zugangsdaten noch eine Cloud-Umgebung. Convex-Test
 verwendet pro Test einen isolierten Datenbestand und eine steuerbare Uhr.
 
@@ -165,11 +167,12 @@ Die Optionen wurden mit der installierten Convex-Version 1.45.0 geprüft.
 
 ## Bestehendes Backend umstellen
 
-Ein Backend aus der Zeit der Web-App braucht nach dem Deploy der neuen
-Version nur einen neuen Eintrag in `SHOO_OWNER_SUBJECTS`. Shoo vergibt für die
-Convex-Site-Origin ein anderes `sub` als für die alte Web-Origin. Die erste
-Anmeldung in der Desktop-App zeigt den Eintrag, Schritt 5 oben beschreibt das
-Ergänzen. Einträge für alte Web-Origins liest das Backend nicht mehr.
+Ein Backend aus der Zeit der früheren, am 1. Oktober 2026 entfernten Web-App
+braucht nach dem Deploy der neuen Version nur einen neuen Eintrag in
+`SHOO_OWNER_SUBJECTS`. Shoo vergibt für die Convex-Site-Origin ein anderes
+`sub` als für die alte Web-Origin. Die erste Anmeldung in der Desktop-App zeigt
+den Eintrag, Schritt 5 oben beschreibt das Ergänzen. Einträge für die Origins
+der früheren Web-App liest das Backend nicht mehr.
 `APP_ALLOWED_ORIGINS` wird nicht mehr verwendet und kann aus der
 Convex-Umgebung entfernt werden. Vorhandene Schlüssel bleiben gültig. Sie
 haben kein `kind` und stehen in der App unter Einstellungen > Schlüssel, wo
@@ -179,6 +182,74 @@ blockieren keinen Deploy und lassen sich bei Bedarf im Dashboard löschen.
 Noch geplante Jobs `auth:expireSession` laufen bis zu 30 Tage nach dem
 Deploy ins Leere und schlagen fehl, weil die Funktion fehlt. Das ist harmlos,
 im Dashboard lassen sie sich unter Schedules abbrechen.
+
+## Web-App freischalten
+
+Die [Web-App](web.md) für das iPhone braucht im Backend nur `WEB_APP_ORIGIN`.
+Auch sie verwendet genau das ausgewählte Produktionsbackend, ein eigenes
+Backend für das Web gibt es nicht.
+
+1. Den Backend-Code mit Web-Callback und CORS wie jeden anderen Stand
+   veröffentlichen:
+
+   ```sh
+   node scripts/convex.mjs deploy --typecheck enable
+   ```
+
+   Ohne `WEB_APP_ORIGIN` ändert das für den Mac nichts. Der Callback lehnt
+   `web.`-States mit HTTP 400 ab, und keine Route sendet CORS-Header.
+
+2. Die Origin der Web-App setzen:
+
+   ```sh
+   node scripts/convex.mjs env set WEB_APP_ORIGIN https://task.shubrt.me
+   ```
+
+   Das Backend liest den Wert bei jeder Anfrage, ein weiterer Deploy ist nicht
+   nötig.
+
+3. Von der Shell prüfen, mit der Site-URL aus `.env`:
+
+   ```sh
+   SITE=https://<deployment>.<region>.convex.site
+   curl -si -X OPTIONS "$SITE/auth/device-token" \
+     -H "Origin: https://task.shubrt.me" \
+     -H "Access-Control-Request-Method: POST" \
+     -H "Access-Control-Request-Headers: authorization"
+   curl -si -X POST "$SITE/auth/device-token" \
+     -H "Origin: https://task.shubrt.me" -H "Authorization: Bearer todo_ungueltig"
+   curl -si "$SITE/auth/desktop/callback?code=test&state=web.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   ```
+
+   Der Preflight antwortet mit HTTP 204,
+   `access-control-allow-origin: https://task.shubrt.me`,
+   `access-control-allow-methods: POST`,
+   `access-control-allow-headers: authorization, content-type` und
+   `vary: Origin`. Mit einer fremden Origin wie `https://example.com` fehlt
+   `access-control-allow-origin`. Der POST mit falschem Schlüssel liefert
+   HTTP 401, ebenfalls mit `access-control-allow-origin`. Der Callback antwortet
+   mit HTTP 302 und
+   `location: https://task.shubrt.me/auth/callback?code=test&state=web.AAA…`.
+
+4. Auf dem iPhone anmelden, siehe [Web-App](web.md#anmelden).
+
+Ein neuer Eintrag in `SHOO_OWNER_SUBJECTS` ist nicht nötig. Die Web-App
+schickt dieselbe `client_id` und Redirect-URI wie der Mac und bekommt deshalb
+dasselbe `sub`.
+
+Zurück geht es mit `node scripts/convex.mjs env remove WEB_APP_ORIGIN`. Danach
+lehnt der Callback die Anmeldung aus dem Web ab, und eine schon angemeldete
+Web-App erreicht das Backend nicht mehr. Ihr Geräteschlüssel bleibt aktiv, bis
+man ihn auf dem Mac unter Einstellungen > Schlüssel widerruft. Den Mac betrifft
+das nicht.
+
+Ein fehlender oder falscher Wert sieht in der angemeldeten Web-App aus wie ein
+Netzproblem. Safari verwirft die Antworten ohne passenden CORS-Header, der
+Statuspunkt wird rot, und die App zeigt "Deine Aufgaben sind gerade nicht
+erreichbar." Bei der Anmeldung zeigt die Convex-Site dann "Ungültige
+Anmeldeantwort", oder der Callback landet auf einer falschen Adresse.
+`node scripts/convex.mjs env get WEB_APP_ORIGIN` muss genau die Origin der
+Web-App ausgeben, kleingeschrieben, ohne Pfad und ohne abschließenden Slash.
 
 ## Umstellung auf Listen
 
@@ -260,19 +331,21 @@ das Feld `area` annimmt.
 
 ## Konfiguration
 
-`.env` im Repository-Root enthält nur `CONVEX_SITE_URL`. Die Desktop-App
-kompiliert den Wert beim Build ein, der Wrapper `scripts/convex.mjs` wählt
-damit das Deployment. Die in `.env.example` auskommentierten Backendwerte
-gehören in die Convex-Umgebung, ein Eintrag in `.env` richtet dort nichts
-ein.
+`.env` im Repository-Root enthält nur `CONVEX_SITE_URL`. Desktop- und Web-App
+kompilieren den Wert beim Build ein, der Wrapper `scripts/convex.mjs` wählt
+damit das Deployment. Für die gehostete Web-App steht derselbe Wert als
+Service-Variable in Railway, siehe [Hosting](web.md#hosting). Die in
+`.env.example` auskommentierten Backendwerte gehören in die Convex-Umgebung,
+ein Eintrag in `.env` richtet dort nichts ein.
 
-| Convex-Variable        | Inhalt                                              |
-| ---------------------- | --------------------------------------------------- |
-| `TODO_OWNER_ID`        | Interne Owner-ID, an die alle Daten gebunden sind   |
-| `SHOO_OWNER_SUBJECTS`  | JSON-Objekt von Site-Origin auf Shoo-`sub`          |
-| `AUTH_JWT_ISSUER`      | Site-URL ohne abschließenden Slash                  |
-| `AUTH_JWT_PRIVATE_JWK` | Privater ES256-Schlüssel aus `vp run keys:generate` |
-| `AUTH_JWT_PUBLIC_JWKS` | Öffentliche Schlüssel als JWKS, auch für Rotationen |
+| Convex-Variable        | Inhalt                                                                                                                                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TODO_OWNER_ID`        | Interne Owner-ID, an die alle Daten gebunden sind                                                                                                                                                    |
+| `SHOO_OWNER_SUBJECTS`  | JSON-Objekt von Site-Origin auf Shoo-`sub`                                                                                                                                                           |
+| `AUTH_JWT_ISSUER`      | Site-URL ohne abschließenden Slash                                                                                                                                                                   |
+| `AUTH_JWT_PRIVATE_JWK` | Privater ES256-Schlüssel aus `vp run keys:generate`                                                                                                                                                  |
+| `AUTH_JWT_PUBLIC_JWKS` | Öffentliche Schlüssel als JWKS, auch für Rotationen                                                                                                                                                  |
+| `WEB_APP_ORIGIN`       | Optional. Exakte https-Origin der Web-App, etwa `https://task.shubrt.me`, kleingeschrieben, ohne Pfad und abschließenden Slash. Fehlt der Wert oder ist er ungültig, sind Web-Anmeldung und CORS aus |
 
 `CONVEX_SITE_URL` setzt Convex in Funktionen selbst. Daraus leitet das
 Backend die Origin für die Shoo-`client_id` und die Redirect-URI

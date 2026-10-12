@@ -1,0 +1,78 @@
+import type { PointerEvent as ReactPointerEvent } from "react";
+
+let coarse: MediaQueryList | undefined;
+
+/**
+ * True when the primary pointer is a finger (the iPhone), always false on the Mac. Read at
+ * render or event time; the primary pointer does not change while the app runs. Touch-only
+ * CSS sits in `@media (pointer: coarse)` for the same reason.
+ */
+export const isTouch = () => (coarse ??= matchMedia("(pointer: coarse)")).matches;
+
+/** Ms a finger rests before a press counts as long. */
+const hold = 450;
+/** Px a finger may move meanwhile; more makes it a scroll. */
+const slop = 8;
+
+/** Set by drag.ts while a row is lifted; touch-layer.ts then keeps the finger from scrolling. */
+export const gesture = { lock: false };
+
+/** Where and with which finger a long press started. */
+type Press = { target: HTMLElement; x: number; y: number; pointerId: number };
+
+/**
+ * Long press on touch: returns a pointer-down handler that calls `onHold` once the finger has
+ * rested `hold` ms within `slop` px. When `onHold` returns true it took the press, and the
+ * click iOS may send on release (wherever it lands, e.g. on a panel opened meanwhile) is
+ * swallowed; otherwise the release stays a tap. A mouse is ignored. A plain factory, not a
+ * hook, so panel rows can use it inside a map.
+ */
+export function longPress(onHold: (press: Press) => boolean) {
+  return (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType !== "touch") return;
+    const press: Press = {
+      target: event.currentTarget,
+      x: event.clientX,
+      y: event.clientY,
+      pointerId: event.pointerId,
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+    const move = (next: PointerEvent) => {
+      const moved = Math.hypot(next.clientX - press.x, next.clientY - press.y);
+      if (next.pointerId === press.pointerId && moved > slop) stop();
+    };
+    const end = (next: PointerEvent) => {
+      if (next.pointerId === press.pointerId) stop();
+    };
+    const timer = setTimeout(() => {
+      stop();
+      if (onHold(press)) swallowClick();
+    }, hold);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+  };
+}
+
+/**
+ * Swallows the next click. Whether iOS sends one after a long press is unverified, so the next
+ * pointer-down, which comes before any later tap's click, ends the wait as well.
+ */
+function swallowClick() {
+  const swallow = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    done();
+  };
+  const done = () => {
+    window.removeEventListener("click", swallow, true);
+    window.removeEventListener("pointerdown", done, true);
+  };
+  window.addEventListener("click", swallow, true);
+  window.addEventListener("pointerdown", done, true);
+}

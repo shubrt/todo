@@ -19,6 +19,8 @@
     "commitlint": "commitlint --edit",
     "dev": "vp run @todo/desktop#dev",
     "build": "vp run @todo/desktop#build",
+    "dev:web": "vp run @todo/web#dev",
+    "build:web": "vp run @todo/web#build",
     "package": "vp run @todo/desktop#package",
     "install:mac": "node scripts/install-mac.mjs",
     "codegen": "vp run @todo/backend#codegen",
