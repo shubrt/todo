@@ -116,7 +116,8 @@ interface RequestOptions {
   serverMessages?: boolean;
 }
 
-// Calls the Convex HTTP site. Errors become NativeApiError with a known code and a German message.
+// Calls the Convex HTTP site. A body is JSON unless init.headers sets another content-type.
+// Errors become NativeApiError with a known code and a German message.
 async function request(
   siteUrl: string,
   path: string,
@@ -128,7 +129,7 @@ async function request(
   try {
     const headers = new Headers(init.headers);
     if (apiKey) headers.set("authorization", `Bearer ${apiKey}`);
-    if (init.body) headers.set("content-type", "application/json");
+    if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
     const response = await fetch(`${siteUrl}${path}`, {
       ...init,
       headers,
@@ -237,12 +238,13 @@ export function createTokenProvider(connection: Connection): TokenProvider {
     if (pending) return pending;
     pending = (async () => {
       try {
-        const result = await request(
-          verified.siteUrl,
-          "/auth/device-token",
-          { method: "POST" },
-          { apiKey: verified.apiKey },
-        );
+        // The key goes in a text/plain body, not a header: that keeps the web app's request a
+        // CORS simple request, so a cold launch does not wait for a preflight first.
+        const result = await request(verified.siteUrl, "/auth/device-token", {
+          method: "POST",
+          headers: { "content-type": "text/plain;charset=UTF-8" },
+          body: verified.apiKey,
+        });
         const body = result as { token?: unknown; expiresAt?: unknown } | null;
         if (
           !body ||

@@ -50,6 +50,12 @@ den Preflight. `Access-Control-Allow-Origin` steht nur bei genau der Origin aus
 `WEB_APP_ORIGIN`, Credentials erlaubt keine Route. `/api/v1`, der Callback und
 der JWKS-Endpunkt senden keine CORS-Header.
 
+Den Token-Abruf schickt die App als einfache Anfrage ohne Preflight. Der
+Schlüssel steht dafür als `text/plain` im Body statt im Authorization-Header.
+Sonst würde jeder Kaltstart der Web-App zuerst auf einen Preflight warten.
+Senden kann eine solche Anfrage jede Webseite. Ohne Schlüssel nützt sie aber
+nichts, und lesen darf die Antwort nur `WEB_APP_ORIGIN`.
+
 Convex tauscht den Code bei Shoo ein und prüft das ID-Token selbst.
 `SHOO_OWNER_SUBJECTS` ordnet das `sub` für die Site-Origin der internen
 Owner-ID aus `TODO_OWNER_ID` zu. Ohne Eintrag weist das Backend die Anmeldung
@@ -65,15 +71,29 @@ sein. Widerrufene und abgelaufene zählen nicht mit.
 
 Für Convex-Abonnements tauscht die App den Schlüssel über
 `POST /auth/device-token` gegen ein ES256-JWT mit `apiKeyId`, das höchstens
-fünf Minuten gilt. Öffentliche Fachfunktionen akzeptieren nur solche
-Geräte-JWTs und lesen die Schlüsselzeile bei jedem Zugriff. Ein Widerruf
-beendet dadurch auch laufende Abonnements. Sitzungen gibt es nicht, auch nicht
-im Browser. Die Web-App hält wie der Mac einen Geräteschlüssel und holt damit
+fünf Minuten gilt. Die HTTP-Action prüft den Schlüssel mit der Mutation
+`auth.deviceCredential` und signiert das JWT selbst, in der Standardlaufzeit
+von Convex ohne Kaltstart. Eine Node-Action würde jeden Start der App und jede
+Erneuerung verlängern. Als Node-Action läuft nur noch `authActions.desktopLogin`,
+der seltene Codetausch bei der Anmeldung. Öffentliche Fachfunktionen
+akzeptieren nur solche Geräte-JWTs und lesen die Schlüsselzeile bei jedem
+Zugriff. Ein Widerruf beendet dadurch auch laufende Abonnements. Sitzungen
+gibt es nicht, auch nicht im Browser. Die Web-App hält wie der Mac einen Geräteschlüssel und holt damit
 JWTs. Sie speichert ihn im Klartext in localStorage, geschützt nur durch ihre
 Content Security Policy und den Host, siehe [Web-App](web.md#grenzen).
 Integrationsschlüssel bekommen an `/auth/device-token` HTTP 403 und damit nie
 ein JWT. Ein entwendeter Integrationsschlüssel kann deshalb keine anderen
 Schlüssel lesen oder widerrufen.
+
+Der Convex-Client der App schickt nichts, bevor er das erste JWT hat
+(`expectAuth`). Gleich nach dem Anlegen abonniert er für 30 Sekunden
+`lists.list`, `settings.get` und die Abfragen der Liste, mit der die App
+zuletzt gestartet ist. Diese Liste merkt sich die App in localStorage unter
+`todo.start`, Abmelden löscht sie mit dem übrigen Speicher. Die Abfragen gehen
+zusammen mit dem JWT hinaus, so bringt eine Antwort des Servers den ersten
+Bildschirm. Das erste JWT behält der Client bis kurz vor seinem Ablauf
+(`initialAuthTokenReuse`). Ohne diese Option holt Convex sofort ein zweites, und
+der Server führt dafür alle Abfragen noch einmal aus.
 
 Die HTTP-API unter `/api/v1` nimmt alle drei Arten direkt als Bearer-Token.
 Deployment-Schlüssel gehören weder in die App noch in Integrationen.
@@ -114,7 +134,9 @@ erledigte Instanz bleiben.
 
 Queries können nichts anlegen. Deshalb ruft die App nach der Anmeldung
 `lists.bootstrap` auf, und die HTTP-API führt vor jedem Lesezugriff
-`ensureOwner` als Mutation aus. `ensureOwner` legt fehlende Startlisten an und
+`ensureOwner` als Mutation aus. Auf `lists.bootstrap` wartet die App nicht,
+ihre Ansicht lädt gleichzeitig. Listen fehlen nur beim ersten Anmelden, dann
+bleibt das Fenster leer, bis `lists.bootstrap` sie angelegt hat. `ensureOwner` legt fehlende Startlisten an und
 stellt Daten aus der Zeit der festen Bereiche einmal je Besitzer um. Jeder
 Schreibbefehl und der stündliche Cron rufen es ebenfalls auf. Einzelheiten zur
 Umstellung stehen in [Entwicklung](development.md#umstellung-auf-listen).

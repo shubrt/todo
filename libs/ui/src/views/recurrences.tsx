@@ -14,6 +14,7 @@ import {
   useSelectables,
   useSelectedRow,
 } from "../rows";
+import { viewQueries } from "../start";
 import { useApp, type Selectable } from "../store";
 import { useTaskActions } from "../task-actions";
 import { isTouch } from "../touch";
@@ -46,7 +47,8 @@ const openActions = (recurrenceId: Id<"recurrences">) =>
  * (panels/actions.tsx).
  */
 export function RecurrencesView(_props: { list: List }) {
-  const recurrences = useQuery(api.recurrences.list, {});
+  const queries = viewQueries.recurrences();
+  const recurrences = useQuery(queries.recurrences.query, queries.recurrences.args);
   const lists = useLists();
   const actions = useTaskActions();
   const sections = useMemo(

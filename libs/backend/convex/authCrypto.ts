@@ -1,4 +1,11 @@
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } from "jose";
+import {
+  createRemoteJWKSet,
+  importJWK,
+  jwtVerify,
+  SignJWT,
+  type JWTVerifyGetKey,
+  type JWTPayload,
+} from "jose";
 import { ConvexError } from "convex/values";
 
 export const SHOO_ISSUER = "https://shoo.dev";
@@ -90,4 +97,47 @@ export function publicJwks() {
   } catch {
     return { keys: [] };
   }
+}
+
+/**
+ * Signs the ES256 JWT that Convex accepts for `ownerId`, valid for TOKEN_DURATION but never past
+ * `credentialExpiry`. Runs in the default runtime (WebCrypto), so /auth/device-token needs no
+ * Node action. Fails closed unless AUTH_JWT_PRIVATE_JWK matches a key in AUTH_JWT_PUBLIC_JWKS.
+ */
+export async function signOwnerToken(
+  ownerId: string,
+  claims: Record<string, string>,
+  credentialExpiry?: number,
+) {
+  const issuer = process.env.AUTH_JWT_ISSUER;
+  if (!issuer || !process.env.AUTH_JWT_PRIVATE_JWK)
+    throw new ConvexError({
+      code: "NOT_CONFIGURED",
+      message: "Die Anmeldung ist noch nicht eingerichtet.",
+    });
+  const jwk = JSON.parse(process.env.AUTH_JWT_PRIVATE_JWK);
+  if (
+    !jwk.kid ||
+    jwk.kty !== "EC" ||
+    jwk.crv !== "P-256" ||
+    !publicJwks().keys.some((key) => key.kid === jwk.kid && key.x === jwk.x && key.y === jwk.y)
+  )
+    throw new ConvexError({
+      code: "NOT_CONFIGURED",
+      message: "Der Signierschlüssel ist nicht eingerichtet.",
+    });
+  const key = await importJWK(jwk, "ES256");
+  const expiresAt =
+    Math.floor(Math.min(Date.now() + TOKEN_DURATION, credentialExpiry ?? Infinity) / 1000) * 1000;
+  if (expiresAt <= Date.now())
+    throw new ConvexError({ code: "UNAUTHENTICATED", message: "Die Anmeldung ist abgelaufen." });
+  const token = await new SignJWT(claims)
+    .setProtectedHeader({ alg: "ES256", typ: "JWT", kid: jwk.kid })
+    .setIssuer(issuer)
+    .setAudience("todo")
+    .setSubject(ownerId)
+    .setIssuedAt()
+    .setExpirationTime(expiresAt / 1000)
+    .sign(key);
+  return { token, expiresAt };
 }

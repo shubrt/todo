@@ -1,4 +1,3 @@
-import { api } from "@todo/backend/api";
 import { useQuery } from "convex/react";
 import { Fragment, useMemo } from "react";
 import { useDay, useLists, type List } from "../data";
@@ -10,6 +9,7 @@ import {
   TaskTree,
   useSelectables,
 } from "../rows";
+import { viewQueries } from "../start";
 import { useApp } from "../store";
 import { ListMark } from "../ui";
 import { byList } from "./by-list";
@@ -22,7 +22,8 @@ import "./views.css";
  * each section shows only part of its list.
  */
 export function ImportantView(_props: { list: List }) {
-  const tasks = useQuery(api.tasks.list, { view: "important" });
+  const queries = viewQueries.important();
+  const tasks = useQuery(queries.tasks.query, queries.tasks.args);
   const lists = useLists();
   const day = useDay();
   const expanded = useApp((state) => state.expanded);

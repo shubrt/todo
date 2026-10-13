@@ -3,12 +3,13 @@ import { ConvexError } from "convex/values";
 import { logEvent } from "@todo/logging";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { publicJwks, sha256 } from "./authCrypto";
+import { publicJwks, sha256, signOwnerToken } from "./authCrypto";
 import {
   canonicalJson,
   applicationKey,
   corsHeaders,
   desktopCallbackLocation,
+  deviceTokenKey,
   errorResponse,
   jsonResponse,
   preflightResponse,
@@ -59,9 +60,9 @@ http.route({
 });
 
 /**
- * POST JSON auth endpoint with the shared error shape and request logging. Success and error
- * responses carry CORS headers for WEB_APP_ORIGIN, so the web app also sees a 401; an OPTIONS
- * route answers the browser's preflight. /api/v1 has no CORS.
+ * POST auth endpoint with JSON responses, the shared error shape and request logging. Success
+ * and error responses carry CORS headers for WEB_APP_ORIGIN, so the web app also sees a 401; an
+ * OPTIONS route answers the browser's preflight. /api/v1 has no CORS.
  */
 function authRoute(path: string, run: (ctx: ActionCtx, request: Request) => Promise<unknown>) {
   const operation = `auth.${path.slice("/auth/".length)}`;
@@ -115,11 +116,14 @@ authRoute("/auth/desktop-login", async (ctx, request) => {
   });
 });
 
-authRoute("/auth/device-token", async (ctx, request) =>
-  ctx.runAction(internal.authActions.deviceToken, {
-    tokenHash: await sha256(applicationKey(request)),
-  }),
-);
+// Signs the JWT right here in the default runtime; a Node action would add a cold start to every
+// app start and token refresh.
+authRoute("/auth/device-token", async (ctx, request) => {
+  const credential = await ctx.runMutation(internal.auth.deviceCredential, {
+    tokenHash: await sha256(await deviceTokenKey(request)),
+  });
+  return signOwnerToken(credential.ownerId, { apiKeyId: credential.id }, credential.expiresAt);
+});
 
 authRoute("/auth/device-revoke", async (ctx, request) => {
   await ctx.runMutation(internal.auth.revokeDeviceKey, {

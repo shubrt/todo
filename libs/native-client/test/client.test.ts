@@ -130,8 +130,11 @@ describe("device login", () => {
 describe("memory token provider", () => {
   it("deduplicates token refreshes, caches in memory and honors forced refresh", async () => {
     const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
-      expect(new Headers(init.headers).get("authorization")).toBe(`Bearer ${connection.apiKey}`);
-      expect(init.body).toBeUndefined();
+      // Key in a text/plain body and no other header: a CORS simple request without preflight.
+      expect([...new Headers(init.headers)]).toEqual([
+        ["content-type", "text/plain;charset=UTF-8"],
+      ]);
+      expect(init.body).toBe(connection.apiKey);
       expect(init.redirect).toBe("error");
       return Response.json({ token, expiresAt: Date.now() + 300_000 });
     });

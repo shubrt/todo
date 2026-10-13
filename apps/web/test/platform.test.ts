@@ -14,18 +14,18 @@ type Call = { path: string; key?: string; body?: unknown };
 
 /**
  * Stubs the Convex site: `routes` answers per path (status, JSON body) or throws like an
- * offline network; returns the calls with the bearer key that was sent.
+ * offline network; returns the calls with the key that was sent, as a bearer header or as the
+ * token request's text/plain body.
  */
 function backend(routes: Record<string, (key?: string) => [number, unknown]>) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
     const path = new URL(url).pathname;
-    const key = new Headers(init.headers).get("authorization")?.replace("Bearer ", "");
-    calls.push({
-      path,
-      key,
-      body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
-    });
+    const headers = new Headers(init.headers);
+    const sent = typeof init.body === "string" ? init.body : undefined;
+    const text = headers.get("content-type")?.startsWith("text/plain");
+    const key = text ? sent : headers.get("authorization")?.replace("Bearer ", "");
+    calls.push({ path, key, body: sent && !text ? JSON.parse(sent) : undefined });
     const route = routes[path];
     if (!route) throw new TypeError("Failed to fetch");
     const [status, body] = route(key);

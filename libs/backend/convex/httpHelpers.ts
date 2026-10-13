@@ -7,44 +7,52 @@ import {
 } from "@todo/contracts";
 
 export const MAX_BODY_BYTES = 32 * 1024;
+// A key is 48 characters; the rest leaves room for surrounding whitespace.
+const MAX_KEY_BYTES = 128;
+const KEY_PATTERN = /^todo_[A-Za-z0-9_-]{43}$/;
 
-export function applicationKey(request: Request): string {
-  const match = request.headers.get("authorization")?.match(/^Bearer (todo_[A-Za-z0-9_-]{43})$/);
-  if (!match?.[1])
-    throw new ConvexError({
-      code: "UNAUTHENTICATED",
-      message: "Ein gültiger API-Schlüssel ist erforderlich.",
-    });
-  return match[1];
+function unauthenticated(): never {
+  throw new ConvexError({
+    code: "UNAUTHENTICATED",
+    message: "Ein gültiger API-Schlüssel ist erforderlich.",
+  });
 }
 
-export async function readJson(request: Request): Promise<Record<string, unknown>> {
-  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
-    throw new ConvexError({
-      code: "INVALID_INPUT",
-      message: "Content-Type application/json ist erforderlich.",
-    });
-  const length = Number(request.headers.get("content-length") ?? 0);
-  if (length > MAX_BODY_BYTES)
-    throw new ConvexError({
-      code: "PAYLOAD_TOO_LARGE",
-      message: "Die Anfrage darf höchstens 32 KiB enthalten.",
-    });
+export function applicationKey(request: Request): string {
+  const key = request.headers.get("authorization")?.match(/^Bearer (.*)$/)?.[1];
+  if (!key || !KEY_PATTERN.test(key)) unauthenticated();
+  return key;
+}
+
+/**
+ * The key for /auth/device-token: from the Authorization header when present (older apps),
+ * else from a text/plain body. The body form keeps the web app's token request a CORS simple
+ * request without a preflight. That is safe: any page can send one, but without the key it is
+ * useless, and only WEB_APP_ORIGIN can read the response.
+ */
+export async function deviceTokenKey(request: Request): Promise<string> {
+  if (request.headers.has("authorization")) return applicationKey(request);
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("text/plain"))
+    unauthenticated();
+  const body = await readBytes(request, MAX_KEY_BYTES);
+  const key = body && new TextDecoder().decode(body).trim();
+  if (!key || !KEY_PATTERN.test(key)) unauthenticated();
+  return key;
+}
+
+/** Reads the body, or null once it exceeds `max` bytes. A missing body reads as empty. */
+async function readBytes(request: Request, max: number): Promise<Uint8Array | null> {
+  if (Number(request.headers.get("content-length") ?? 0) > max) return null;
   const reader = request.body?.getReader();
-  if (!reader)
-    throw new ConvexError({ code: "INVALID_INPUT", message: "Ein JSON-Objekt ist erforderlich." });
   const chunks: Uint8Array[] = [];
   let size = 0;
-  while (true) {
+  while (reader) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_BODY_BYTES) {
+    if (size > max) {
       await reader.cancel();
-      throw new ConvexError({
-        code: "PAYLOAD_TOO_LARGE",
-        message: "Die Anfrage darf höchstens 32 KiB enthalten.",
-      });
+      return null;
     }
     chunks.push(value);
   }
@@ -54,8 +62,25 @@ export async function readJson(request: Request): Promise<Record<string, unknown
     joined.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  return joined;
+}
+
+export async function readJson(request: Request): Promise<Record<string, unknown>> {
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))
+    throw new ConvexError({
+      code: "INVALID_INPUT",
+      message: "Content-Type application/json ist erforderlich.",
+    });
+  if (!request.body)
+    throw new ConvexError({ code: "INVALID_INPUT", message: "Ein JSON-Objekt ist erforderlich." });
+  const bytes = await readBytes(request, MAX_BODY_BYTES);
+  if (!bytes)
+    throw new ConvexError({
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Die Anfrage darf höchstens 32 KiB enthalten.",
+    });
   try {
-    const body: unknown = JSON.parse(new TextDecoder().decode(joined));
+    const body: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (!body || typeof body !== "object" || Array.isArray(body))
       throw new Error("object required");
     return body as Record<string, unknown>;
@@ -227,7 +252,8 @@ export function desktopCallbackLocation(url: URL, webOrigin: string | null): str
 
 /**
  * CORS headers for the auth POST routes: only the web app's exact origin may read responses.
- * Never allows credentials; the web app sends its device key as a bearer header.
+ * Never allows credentials; the web app sends its device key in the token request's body or
+ * as a bearer header, never in a cookie.
  */
 export function corsHeaders(request: Request, webOrigin: string | null): Record<string, string> {
   return webOrigin && request.headers.get("origin") === webOrigin
@@ -235,7 +261,10 @@ export function corsHeaders(request: Request, webOrigin: string | null): Record<
     : { vary: "Origin" };
 }
 
-/** Answers the browser's preflight for an auth POST route; a foreign origin gets no allowance. */
+/**
+ * Answers the browser's preflight for an auth POST route; a foreign origin gets no allowance.
+ * Login and revoke need it; the token request skips it unless an older app sends a bearer header.
+ */
 export function preflightResponse(request: Request, webOrigin: string | null): Response {
   const headers = corsHeaders(request, webOrigin);
   if (headers["access-control-allow-origin"])

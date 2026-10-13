@@ -1,4 +1,3 @@
-import { api } from "@todo/backend/api";
 import { useQuery } from "convex/react";
 import { Fragment, useMemo } from "react";
 import { useDay, type List, type Task } from "../data";
@@ -11,6 +10,7 @@ import {
   TaskTree,
   useSelectables,
 } from "../rows";
+import { viewQueries } from "../start";
 import { isSectionOpen, useApp, type Selectable } from "../store";
 import "./views.css";
 
@@ -22,8 +22,9 @@ const sectionLabels = { active: "Tasks", backlog: "Backlog", later: "Für späte
  * ⌘N editor sits right under them.
  */
 export function ListView({ list }: { list: List }) {
-  const tasks = useQuery(api.tasks.list, { view: "list", listId: list._id });
-  const deferred = useQuery(api.tasks.deferred, { listId: list._id });
+  const queries = viewQueries.tasks(list._id);
+  const tasks = useQuery(queries.tasks.query, queries.tasks.args);
+  const deferred = useQuery(queries.deferred.query, queries.deferred.args);
   const day = useDay();
   const sections = useApp((state) => state.sections);
   const expanded = useApp((state) => state.expanded);

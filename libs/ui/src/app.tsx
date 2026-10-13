@@ -27,6 +27,7 @@ import { LoadFailedView, LoginView, OfflineView, PlatformErrorView } from "./log
 import { PanelHost } from "./panels";
 import { ConnectedProvider, PlatformProvider, usePlatform, useTokenRejected } from "./connection";
 import type { Platform } from "./platform";
+import { rememberStart } from "./start";
 import { selectedTask, useApp } from "./store";
 import { TaskActionsProvider, useTaskActions } from "./task-actions";
 import { Toast } from "./toast";
@@ -182,7 +183,6 @@ function Authenticated({ reconnect, login }: { reconnect: () => void; login: () 
     );
   return (
     <Session
-      loading={<Frame status={<StatusDot />} />}
       failed={(message, retry) => (
         <Frame title="todo" status={<StatusDot />}>
           <LoadFailedView message={message} onRetry={retry} />
@@ -249,15 +249,19 @@ function ListContent({ list }: { list: List }) {
 
 /**
  * Opens the start list (see startList) once its data is loaded, unless a list was opened
- * before, e.g. from the tray. Until then the workspace looks as while loading. Only once per
- * launch or page load: a new session in the same window keeps its list.
+ * before, e.g. from the tray, and remembers it for the next start's prewarm. Until then the
+ * workspace looks as while loading. Only once per launch or page load: a new session in the
+ * same window keeps its list.
  */
 function useStartList(lists: List[] | undefined, settings: Settings | undefined) {
   useLayoutEffect(() => {
-    if (useApp.getState().current) return;
+    if (useApp.getState().current || !lists) return;
     const start = startList(lists, settings);
+    if (!start) return;
     // Not open(): a panel opened meanwhile stays, and the first row still gets the selection.
-    if (start) useApp.setState({ current: start });
+    useApp.setState({ current: start });
+    const list = resolveList(lists, start);
+    if (list) rememberStart(list);
   }, [lists, settings]);
 }
 

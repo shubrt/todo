@@ -1,4 +1,3 @@
-import { api } from "@todo/backend/api";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
 import { useDay, type List, type Task } from "../data";
@@ -11,6 +10,7 @@ import {
   TaskTree,
   useSelectables,
 } from "../rows";
+import { viewQueries } from "../start";
 import { useApp } from "../store";
 import "./views.css";
 
@@ -24,8 +24,9 @@ const noHistory = Array.from({ length: 6 }, () => false);
  * recurrence), ⌥↑/⌥↓ also set the order of the coming days.
  */
 export function HabitsView({ list }: { list: List }) {
-  const tasks = useQuery(api.tasks.list, { view: "list", listId: list._id });
-  const history = useQuery(api.recurrences.history, {});
+  const queries = viewQueries.habits(list._id);
+  const tasks = useQuery(queries.tasks.query, queries.tasks.args);
+  const history = useQuery(queries.history.query, queries.history.args);
   const day = useDay();
   const creating = useApp((state) => state.editing?.type === "create" && !state.editing.parentId);
 
