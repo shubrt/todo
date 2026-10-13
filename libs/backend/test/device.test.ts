@@ -164,6 +164,33 @@ describe("native credential bridge", () => {
     expect((await t.fetch("/auth/device-token", { method: "POST", headers })).status).toBe(200);
   });
 
+  it("takes the key from a small text/plain body, so the web app needs no preflight", async () => {
+    const { t, keyId } = await fixture();
+    await signingKeys();
+    const origin = "https://task.example";
+    vi.stubEnv("WEB_APP_ORIGIN", origin);
+    const send = (body: string, contentType = "text/plain;charset=UTF-8") =>
+      t.fetch("/auth/device-token", {
+        method: "POST",
+        headers: { origin, "content-type": contentType },
+        body,
+      });
+    const response = await send(`${rawKey}\n`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+    expect((await response.json()).expiresAt - Date.now()).toBe(300_000);
+    for (const [body, contentType] of [
+      [""],
+      [`Bearer ${rawKey}`],
+      [`${rawKey}x`],
+      [rawKey + " ".repeat(128)],
+      [rawKey, "application/json"],
+    ] as [string, string?][])
+      expect((await send(body, contentType)).status, body).toBe(401);
+    await t.run((ctx) => ctx.db.patch(keyId, { kind: "integration" }));
+    expect((await send(rawKey)).status).toBe(403);
+  });
+
   it("schedules expiration for existing device keys and writes revocation when it is due", async () => {
     const expiry = Date.now() + 1000;
     const { t, device, keyId, tokenHash } = await fixture(expiry);

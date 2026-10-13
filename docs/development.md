@@ -74,6 +74,15 @@ von Variablen und hat nichts mit dem gesperrten `--env-file` zu tun. Für ein
 bereits eingerichtetes Backend genügt der Deploy-Befehl oben. Signierschlüssel
 und Besitzerzuordnung bleiben dabei erhalten.
 
+Mac und Web-App schicken ihren Schlüssel an `/auth/device-token` als
+`text/plain`-Body. Ein älteres Backend liest ihn nur aus dem
+Authorization-Header und antwortet mit HTTP 401. Die App zeigt dann die
+Anmeldung, und auch eine neue Anmeldung hilft nicht. Das Backend deshalb vor
+dem Merge nach `main` deployen, denn der Merge veröffentlicht die Web-App
+sofort, siehe [Hosting](web.md#hosting). Danach den Mac mit
+`vp run install:mac` aktualisieren. Ältere Apps funktionieren mit dem neuen
+Backend weiter.
+
 ## Erstes Backend-Deployment
 
 Der folgende Ablauf gilt für ein neues Backend. Ein eingerichtetes Backend
@@ -212,15 +221,18 @@ Backend für das Web gibt es nicht.
 
    ```sh
    SITE=https://<deployment>.<region>.convex.site
-   curl -si -X OPTIONS "$SITE/auth/device-token" \
+   curl -si -X OPTIONS "$SITE/auth/device-revoke" \
      -H "Origin: https://task.shubrt.me" \
      -H "Access-Control-Request-Method: POST" \
      -H "Access-Control-Request-Headers: authorization"
    curl -si -X POST "$SITE/auth/device-token" \
-     -H "Origin: https://task.shubrt.me" -H "Authorization: Bearer todo_ungueltig"
+     -H "Origin: https://task.shubrt.me" \
+     -H "Content-Type: text/plain;charset=UTF-8" --data-raw todo_ungueltig
    curl -si "$SITE/auth/desktop/callback?code=test&state=web.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
    ```
 
+   Den Preflight schickt die Web-App für Anmeldung und Widerruf, den
+   Token-Abruf sendet sie ohne Preflight mit dem Schlüssel im Body.
    Der Preflight antwortet mit HTTP 204,
    `access-control-allow-origin: https://task.shubrt.me`,
    `access-control-allow-methods: POST`,

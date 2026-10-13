@@ -43,6 +43,8 @@
 		file_server
 	}
 
+	# Everything else with the global no-cache, /sw.js too: a changed service worker arrives on the
+	# next start. Caddy serves it as JavaScript by its extension.
 	handle {
 		file_server
 	}

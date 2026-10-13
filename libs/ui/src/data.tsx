@@ -50,13 +50,15 @@ export function resolveList(lists: List[], ref: ListRef | null) {
 
 /**
  * The list the app starts on: the first favorite, else the default list, else Wichtig.
- * Undefined until lists, and without favorites the settings, are loaded.
+ * Undefined until lists, and without favorites the settings, are loaded. Also while there
+ * are no lists: on the first login lists.bootstrap is still seeding them (see Session), and
+ * a bootstrapped owner always has the special lists.
  */
 export function startList(
   lists: List[] | undefined,
   settings: Settings | undefined,
 ): ListRef | undefined {
-  if (!lists) return undefined;
+  if (!lists?.length) return undefined;
   const favorite = favoritesOf(lists)[0];
   if (favorite) return { id: favorite._id };
   if (!settings) return undefined;
@@ -93,17 +95,17 @@ export function useWrite() {
 
 /**
  * The signed-in session: provides useWrite and runs lists.bootstrap (seeds lists, migrates
- * legacy data) before rendering `children`; `loading` shows until then. A failed bootstrap
- * shows `failed` with the reason and a retry, and retries by itself on the next reconnect.
- * Writes in flight belong to this session's client: a new client starts with none.
+ * legacy data) without holding back `children`, which load their data meanwhile. Only the
+ * first login has no lists before it, and the start waits for them (see startList). A failed
+ * bootstrap shows `failed` with the reason and a retry instead of `children`, and retries by
+ * itself on the next reconnect. Writes in flight belong to this session's client: a new
+ * client starts with none.
  */
 export function Session({
   children,
-  loading,
   failed,
 }: {
   children: ReactNode;
-  loading: ReactNode;
   failed: (message: string, retry: () => void) => ReactNode;
 }) {
   const connection = useConvexConnectionState();
@@ -132,15 +134,18 @@ export function Session({
   }, []);
 
   const bootstrap = useMutation(api.lists.bootstrap);
-  const [ready, setReady] = useState(false);
+  const [done, setDone] = useState(false);
   const [failure, setFailure] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (ready) return;
+    if (done) return;
     let active = true;
     void bootstrap({}).then(
       () => {
-        if (active) setReady(true);
+        if (!active) return;
+        setDone(true);
+        // A retry after a reconnect may succeed while the failure shows.
+        setFailure(undefined);
       },
       (cause: unknown) => {
         // The client queues mutations while offline, so a rejection is a server-side failure.
@@ -150,7 +155,7 @@ export function Session({
     return () => {
       active = false;
     };
-  }, [bootstrap, ready, connection.connectionCount, attempt]);
+  }, [bootstrap, done, connection.connectionCount, attempt]);
   const retry = () => {
     setFailure(undefined);
     setAttempt((count) => count + 1);
@@ -158,7 +163,7 @@ export function Session({
 
   return (
     <WriteContext.Provider value={write}>
-      {ready ? children : failure ? failed(failure, retry) : loading}
+      {failure ? failed(failure, retry) : children}
     </WriteContext.Provider>
   );
 }

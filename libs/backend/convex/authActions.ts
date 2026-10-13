@@ -1,62 +1,15 @@
 "use node";
 
 import { randomBytes } from "node:crypto";
-import { importJWK, SignJWT } from "jose";
 import { ConvexError, v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import {
-  ownerForClaims,
-  publicJwks,
-  sha256,
-  SHOO_ISSUER,
-  TOKEN_DURATION,
-  verifyShooToken,
-} from "./authCrypto";
+import { ownerForClaims, sha256, SHOO_ISSUER, verifyShooToken } from "./authCrypto";
 import { apiKeyKind } from "./validators";
 
 function fail(code: string, message: string): never {
   throw new ConvexError({ code, message });
 }
-
-async function signOwnerToken(
-  ownerId: string,
-  claims: Record<string, string>,
-  credentialExpiry?: number,
-) {
-  const issuer = process.env.AUTH_JWT_ISSUER;
-  if (!issuer || !process.env.AUTH_JWT_PRIVATE_JWK)
-    fail("NOT_CONFIGURED", "Die Anmeldung ist noch nicht eingerichtet.");
-  const jwk = JSON.parse(process.env.AUTH_JWT_PRIVATE_JWK);
-  if (
-    !jwk.kid ||
-    jwk.kty !== "EC" ||
-    jwk.crv !== "P-256" ||
-    !publicJwks().keys.some((key) => key.kid === jwk.kid && key.x === jwk.x && key.y === jwk.y)
-  )
-    fail("NOT_CONFIGURED", "Der Signierschlüssel ist nicht eingerichtet.");
-  const key = await importJWK(jwk, "ES256");
-  const expiresAt =
-    Math.floor(Math.min(Date.now() + TOKEN_DURATION, credentialExpiry ?? Infinity) / 1000) * 1000;
-  if (expiresAt <= Date.now()) fail("UNAUTHENTICATED", "Die Anmeldung ist abgelaufen.");
-  const token = await new SignJWT(claims)
-    .setProtectedHeader({ alg: "ES256", typ: "JWT", kid: jwk.kid })
-    .setIssuer(issuer)
-    .setAudience("todo")
-    .setSubject(ownerId)
-    .setIssuedAt()
-    .setExpirationTime(expiresAt / 1000)
-    .sign(key);
-  return { token, expiresAt };
-}
-
-export const deviceToken = internalAction({
-  args: { tokenHash: v.string() },
-  handler: async (ctx, { tokenHash }): Promise<{ token: string; expiresAt: number }> => {
-    const credential = await ctx.runMutation(internal.auth.deviceCredential, { tokenHash });
-    return signOwnerToken(credential.ownerId, { apiKeyId: credential.id }, credential.expiresAt);
-  },
-});
 
 /**
  * Login of the desktop and web app: exchanges the Shoo code with the PKCE verifier that never

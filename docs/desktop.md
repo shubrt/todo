@@ -64,8 +64,12 @@ Für Live-Daten tauscht der Main-Prozess den Schlüssel gegen ein JWT:
 
 ```http
 POST /auth/device-token
-Authorization: Bearer todo_<geräteschlüssel>
+Content-Type: text/plain;charset=UTF-8
+
+todo_<geräteschlüssel>
 ```
+
+Der Schlüssel steht im Body statt im Authorization-Header. So braucht die Web-App, die denselben Code verwendet, keinen CORS-Preflight. Ältere App-Versionen schicken ihn als `Authorization: Bearer todo_…`, das Backend nimmt beide Formen an.
 
 Die Antwort `{ "token": "<JWT>", "expiresAt": 1788600300000 }` hat keine `data`-Hülle. `expiresAt` ist eine UTC-Unixzeit in Millisekunden. Das ES256-JWT gilt höchstens fünf Minuten. `sub` ist der Owner, `apiKeyId` der Geräteschlüssel, die Audience `todo`. `createTokenProvider` aus `@todo/native-client` hält das JWT nur im Arbeitsspeicher, erneuert es bei weniger als 30 Sekunden Restlaufzeit und bündelt gleichzeitige Abrufe. Bei HTTP 401 liefert er `null`. Die App zeigt dann wieder die Anmeldung, darunter in Rot "Der Geräteschlüssel ist abgelaufen oder wurde widerrufen. Melde dich erneut an." Netzwerk- und Serverfehler werfen `NativeApiError` und löschen keinen gespeicherten Schlüssel. Das Fenster zeigt dann "Deine Aufgaben sind gerade nicht erreichbar." mit "Erneut verbinden" (`↵`) und "Neu anmelden". Gelingt die Verbindung, aber das Backend kann die Listen nicht einrichten (`lists.bootstrap`), zeigt das Fenster "Deine Listen konnten nicht geladen werden." oder die Meldung des Backends, dazu "Erneut versuchen" (`↵`). Nach der nächsten neuen Verbindung versucht die App es auch von selbst.
 
@@ -108,11 +112,11 @@ Alle Pfade liegen auf der Convex-Site. JSON-Fehler haben die Form `{ "error": { 
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /auth/desktop/callback` | Redirect-Ziel für Shoo. Leitet `<port>.<zufall>` an den Loopback-Listener weiter, `web.<zufall>` an `<WEB_APP_ORIGIN>/auth/callback`. Ungültiger State oder `web.` ohne gültiges `WEB_APP_ORIGIN` ergibt 400 |
 | `POST /auth/desktop-login`   | Body `{ code, codeVerifier, deviceName, kind? }`. `kind` ist `device` (Standard) oder `integration`, `deviceName` wird zum Schlüsselnamen. Liefert `{ key, prefix, id }`                                     |
-| `POST /auth/device-token`    | Bearer-Geräteschlüssel oder Schlüssel ohne Typ. Liefert das kurzlebige Convex-JWT. Integrationsschlüssel erhalten 403 `FORBIDDEN`                                                                            |
+| `POST /auth/device-token`    | Geräteschlüssel oder Schlüssel ohne Typ als `text/plain`-Body mit höchstens 128 Byte oder als Bearer-Header. Liefert das kurzlebige Convex-JWT. Integrationsschlüssel erhalten 403 `FORBIDDEN`               |
 | `POST /auth/device-revoke`   | Bearer-Schlüssel jeder Art. Widerruft genau diesen Schlüssel, liefert `{ "revoked": true }`                                                                                                                  |
 | `GET /.well-known/jwks.json` | Öffentliche Schlüssel, mit denen Convex die JWTs prüft                                                                                                                                                       |
 
-Die drei POST-Routen beantworten außerdem `OPTIONS` als CORS-Preflight. Ihre Antworten tragen immer `Vary: Origin`. `Access-Control-Allow-Origin` steht nur bei einer Anfrage von genau `WEB_APP_ORIGIN`, auch auf Fehlerantworten, damit die Web-App einen 401 lesen kann. Credentials erlaubt keine Route. Die Desktop-App schickt keine Origin und bekommt deshalb keine CORS-Header.
+Die drei POST-Routen beantworten außerdem `OPTIONS` als CORS-Preflight. Ihre Antworten tragen immer `Vary: Origin`. `Access-Control-Allow-Origin` steht nur bei einer Anfrage von genau `WEB_APP_ORIGIN`, auch auf Fehlerantworten, damit die Web-App einen 401 lesen kann. Credentials erlaubt keine Route. Die Desktop-App schickt keine Origin und bekommt deshalb keine CORS-Header. Einen Preflight an `/auth/device-token` schickt nur noch eine ältere Web-App mit Bearer-Header.
 
 Liste und Widerruf in den Einstellungen laufen nicht über HTTP, sondern über die Convex-Funktionen `auth.listApiKeys` und `auth.revokeApiKey`, siehe [Architektur](architecture.md#identität).
 
@@ -134,7 +138,7 @@ Schreiben ist gesperrt, sobald die Verbindung fehlt. Das gilt schon in den erste
 
 Die Seitenleiste zeigt die Favoriten als Emoji, Listen ohne Emoji als Anfangsbuchstaben in einem kleinen Feld. Beim Überfahren erscheinen Name und Kurzbefehl `⌘1` bis `⌘9`. Ist eine Liste geöffnet, die kein Favorit ist, steht sie unter einem kurzen Strich, bis eine andere Liste gewählt wird. Unten öffnet das Reglersymbol die Einstellungen. Anfangs sind Wichtig, me, agency, work und Habits Favoriten, in dieser Reihenfolge. In der Listensuche verschieben `⌥↑` und `⌥↓` den markierten Favoriten um eine Stelle. Seitenleiste und `⌘1` bis `⌘9` folgen der neuen Reihenfolge.
 
-Beim Start öffnet die App den ersten Favoriten der Seitenleiste, ohne Favoriten die Standardliste und ohne Standardliste Wichtig. Bis die Listen und wenn nötig die Einstellungen geladen sind, bleibt das Fenster leer. Hat das Menüleistenmenü vorher schon eine Liste geöffnet, bleibt diese offen.
+Beim Start öffnet die App den ersten Favoriten der Seitenleiste, ohne Favoriten die Standardliste und ohne Standardliste Wichtig. Bis die Listen und wenn nötig die Einstellungen geladen sind, bleibt das Fenster leer. Beim ersten Anmelden wartet es außerdem, bis das Backend die Startlisten angelegt hat. Hat das Menüleistenmenü vorher schon eine Liste geöffnet, bleibt diese offen.
 
 Das Menüleistenmenü öffnet Wichtig, Verlauf, Wiederholungen und mit "Listen …" die Listensuche. Darunter schalten "Immer im Vordergrund" und "Auf allen Schreibtischen" um. Es folgen "Einstellungen …" (`⌘,`), "Fenster ausblenden" und "Beenden" (`⌘Q`). Einen Pin in der Titelleiste gibt es nicht, "Immer im Vordergrund" steht im Menü und in den Einstellungen. Das Schließen des Fensters blendet es nur aus, die Menüleiste bleibt verfügbar. Autostart ist optional und lässt sich nur in der installierten App einschalten.
 
@@ -264,7 +268,7 @@ Die Listensuche (`⌘P`) zeigt zuerst die Favoriten, nach einem Strich alle übr
 
 Ist der globale Kurzbefehl schon beim Start belegt, steht der Hinweis in Rot unter dem Panel. Lehnt die App eine neu aufgenommene Kombination ab, erscheint der Fehler wie jeder andere unten im Fenster. Ein Zeitzonenwechsel berechnet Wiederholungen und geplante Aktivierungen in der neuen Zone neu. Bereits gespeicherte Erledigungen behalten ihren Tag und ihre Zone.
 
-Vor der Anmeldung, beim Laden und ohne erreichbares Backend zeigen die Einstellungen nur Fenster, Info und, falls die App einen Schlüssel gespeichert hat, Abmelden. Reißt die Verbindung bei angemeldeter App ab, bleiben alle Abschnitte stehen, Änderungen an Konto und Schlüsseln sind dann aber gesperrt.
+Vor der Anmeldung, beim Verbinden und ohne erreichbares Backend zeigen die Einstellungen nur Fenster, Info und, falls die App einen Schlüssel gespeichert hat, Abmelden. Reißt die Verbindung bei angemeldeter App ab, bleiben alle Abschnitte stehen, Änderungen an Konto und Schlüsseln sind dann aber gesperrt.
 
 ### Wiederholungen
 

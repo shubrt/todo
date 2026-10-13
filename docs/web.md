@@ -2,9 +2,9 @@
 
 ## Überblick
 
-Die Web-App unter <https://task.shubrt.me> bringt die Oberfläche der Mac-App auf das iPhone. Sie ist eine statische Seite, ohne App Store, ohne Service Worker und ohne Offline-Speicher. Wie der Mac spricht sie direkt mit dem einen Convex-Backend und zeigt Änderungen von Mac, API und Integrationen sofort.
+Die Web-App unter <https://task.shubrt.me> bringt die Oberfläche der Mac-App auf das iPhone. Sie ist eine statische Seite ohne App Store. Ein Service Worker hält die Seite für einen schnellen Start bereit, Aufgaben speichert die App nicht auf dem Gerät. Wie der Mac spricht sie direkt mit dem einen Convex-Backend und zeigt Änderungen von Mac, API und Integrationen sofort.
 
-Der Code in `apps/web` ist nur die Hülle um die gemeinsame Oberfläche aus `libs/ui`. Er erledigt Anmeldung, Speicherung des Geräteschlüssels und die Prüfung auf neue Versionen. Alles Übrige beschreibt [Desktop](desktop.md) und gilt hier auch, soweit dieser Text nichts anderes sagt.
+Der Code in `apps/web` ist nur die Hülle um die gemeinsame Oberfläche aus `libs/ui`. Er erledigt Anmeldung, Speicherung des Geräteschlüssels, den Service Worker und die Prüfung auf neue Versionen. Alles Übrige beschreibt [Desktop](desktop.md) und gilt hier auch, soweit dieser Text nichts anderes sagt.
 
 In einem Desktop-Browser läuft dieselbe Seite mit der Bedienung des Macs, aber ohne Fenstereinstellungen, Emoji-Auswahl und Integrationsschlüssel. Gedacht ist sie für das iPhone.
 
@@ -35,15 +35,18 @@ Wer bei Shoo zurückwischt, kommt auf die wartende Seite zurück. Stellt Safari 
 
 Der Schlüssel heißt `todo auf iPhone`, in anderen Browsern `todo im Browser`. Der Dev-Server setzt `dev` davor, etwa `todo dev auf iPhone`. Einstellungen > Info > Dieses Gerät zeigt den Namen.
 
-Die App legt drei Einträge in localStorage ab:
+Die App legt vier Einträge in localStorage ab:
 
 | Eintrag           | Inhalt                                                                            |
 | ----------------- | --------------------------------------------------------------------------------- |
 | `todo.connection` | `{ siteUrl, apiKey }`, der Geräteschlüssel im Klartext                            |
 | `todo.login`      | Die wartende Anmeldung mit State, Verifier und Ablaufzeit, höchstens zehn Minuten |
 | `todo.sections`   | Welche Abschnitte je Liste aufgeklappt sind                                       |
+| `todo.start`      | `{ id, kind }` der Liste, mit der die App zuletzt gestartet ist                   |
 
-Gehört eine gespeicherte Verbindung zu einem anderen Backend als dem des Builds, löscht die App sie. JWTs hält sie nur im Arbeitsspeicher und erneuert sie wie der Mac über `POST /auth/device-token`. `navigator.storage.persist()` ruft sie beim Start mit gespeichertem Schlüssel und nach jeder Anmeldung auf, vorher nicht, damit kein Browser schon vor der Anmeldung um Erlaubnis fragt. Ob iOS den Speicher dann hält, entscheidet iOS.
+Der Cache `todo` des Service Workers enthält nur die Seite und ihre Dateien, keine Aufgaben und keine Schlüssel, siehe [Aktualisierung](#aktualisierung).
+
+Gehört eine gespeicherte Verbindung zu einem anderen Backend als dem des Builds, löscht die App sie. JWTs hält sie nur im Arbeitsspeicher und erneuert sie wie der Mac über `POST /auth/device-token`. Den Schlüssel schickt sie dort als `text/plain` im Body, nicht im Header `Authorization`. So bleibt die Anfrage für CORS eine einfache Anfrage, und der Start wartet nicht auf einen Preflight. Anmeldung und Widerruf senden JSON oder den Header und brauchen den Preflight weiter. `navigator.storage.persist()` ruft sie beim Start mit gespeichertem Schlüssel und nach jeder Anmeldung auf, vorher nicht, damit kein Browser schon vor der Anmeldung um Erlaubnis fragt. Ob iOS den Speicher dann hält, entscheidet iOS.
 
 "Abmelden" in den Einstellungen widerruft den Schlüssel per `POST /auth/device-revoke` und leert danach den ganzen localStorage der Seite, auch ohne Netz. Scheitert der Widerruf, bleibt der Schlüssel im Backend aktiv. Während die App einen Code tauscht, lehnt sie das Abmelden ab.
 
@@ -147,9 +150,19 @@ Unter Info steht "Dieses Gerät" statt "Dieser Mac".
 
 ## Aktualisierung
 
-Einen Service Worker gibt es nicht. Caddy liefert `index.html` mit `Cache-Control: no-cache`, jeder Start holt also die aktuelle Fassung. Die Dateien unter `/assets/` tragen einen Hash im Namen und gelten ein Jahr als unveränderlich.
+Caddy liefert `index.html` mit `Cache-Control: no-cache`. Die Dateien unter `/assets/` tragen einen Hash im Namen und gelten ein Jahr als unveränderlich.
 
-Damit auch eine offene App einen Deploy bemerkt, schreibt der Build `/version.json` mit `{ "version": "<kennung>" }` und kompiliert dieselbe Kennung in die App. Kommt die App in den Vordergrund, lädt sie `/version.json` am Cache vorbei. Weicht die Version ab und ist nichts offen, lädt sie neu. Offen heißt ein Panel, eine Bearbeitung oder ein laufender Codetausch. Dann wartet sie bis zum nächsten Wechsel in den Vordergrund. Ohne Netz passiert nichts. Einstellungen > Info > Version zeigt die Kennung.
+Damit ein Start nicht erst auf Railway wartet, registriert die gebaute App den Service Worker `/sw.js` mit dem Scope `/`. Er legt im Cache `todo` die Seite unter dem Schlüssel `/` ab und dazu die Dateien, die sie unter `/assets/` nennt.
+
+- Ein Start auf `/` oder `/auth/callback` bekommt sofort die gespeicherte Seite. Die Adresse bleibt dabei, die Anmeldung liest `code` und `state` wie vorher.
+- Währenddessen holt er die Seite am HTTP-Cache vorbei neu. Lädt sie, speichert er zuerst ihre Dateien und dann die Seite. Dateien, die sie nicht mehr nennt, löscht er. Nach einem Deploy läuft deshalb beim ersten Start noch die alte Fassung, die neue beim nächsten Start oder nach der Prüfung unten.
+- Ohne gespeicherte Seite antwortet das Netz.
+- Dateien unter `/assets/` kommen aus dem Cache, sonst aus dem Netz, und landen dann im Cache.
+- Antworten mit Fehlerstatus speichert er nie. Alle übrigen Anfragen, etwa `/version.json`, Manifest, Icons und Convex, gehen an ihm vorbei.
+
+Bei der Installation speichert er Seite und Dateien und übernimmt die offene App sofort. Eine geänderte `sw.js` holt der Browser beim nächsten Start und setzt sie gleich ein. Der Dev-Server registriert keinen Service Worker.
+
+Damit auch eine offene App einen Deploy bemerkt, schreibt der Build `/version.json` mit `{ "version": "<kennung>" }` und kompiliert dieselbe Kennung in die App. Kommt die App in den Vordergrund und ist nichts offen, lädt sie `/version.json` am Cache vorbei. Weicht die Version ab, legt sie zuerst die neue Seite in den Cache des Service Workers, sonst brächte das Neuladen die alte zurück. Dann lädt sie neu. Offen heißt ein Panel, eine Bearbeitung oder ein laufender Codetausch. Dann wartet sie bis zum nächsten Wechsel in den Vordergrund. Ohne Netz passiert nichts. Einstellungen > Info > Version zeigt die Kennung.
 
 Die Kennung entsteht beim Build. Die erste vorhandene Quelle gilt:
 
@@ -189,6 +202,7 @@ Railway beendet TLS, Caddy antwortet dahinter auf `PORT`:
 | `/assets/*`             | `public, max-age=31536000, immutable`, eine fehlende Datei 404 mit `no-cache` |
 | `/version.json`         | `no-store`                                                                    |
 | `/manifest.webmanifest` | `Content-Type: application/manifest+json`, `no-cache`                         |
+| `/sw.js`                | `Content-Type: text/javascript`, `no-cache`                                   |
 | alle übrigen Pfade      | die Datei mit `no-cache`, sonst 404                                           |
 
 Alle Antworten tragen `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` und `Strict-Transport-Security: max-age=31536000`. Caddy komprimiert mit zstd oder gzip, seine Admin-API ist aus. Die übrige CSP steht als Meta-Tag in `index.html`, weil sie die Backend-Adressen aus dem Build braucht. Sie erlaubt Skripte nur von der eigenen Origin und keine Inline-Skripte. Verbindungen gehen nur an die eigene Origin, die Convex-Site und das zugehörige `.convex.cloud` über HTTPS und WebSocket. Dazu kommen `object-src 'none'`, `base-uri 'none'` und `form-action 'none'`. `no-referrer` steht zusätzlich als Meta-Tag, damit die Adresse mit dem Code aus `/auth/callback` nicht als Referrer weitergeht.
@@ -211,6 +225,7 @@ In einem zweiten Terminal die Header prüfen und das Image danach mit `docker im
 curl -sI http://localhost:18080/
 curl -sI http://localhost:18080/auth/callback
 curl -sI http://localhost:18080/version.json
+curl -sI http://localhost:18080/sw.js
 curl -sI http://localhost:18080/assets/fehlt.js
 ```
 
@@ -224,7 +239,7 @@ vp run build:web
 vp run @todo/web#preview
 ```
 
-`dev:web` startet den Vite-Dev-Server von `apps/web`, Vite wählt den Port ab 5173. Die Version heißt `dev`, der Titel trägt den Hinweis `dev`, und die Prüfung auf neue Versionen ist aus. Die CSP erlaubt dort Inline-Skripte und `ws:` für HMR. `build:web` baut nach `apps/web/dist` und schreibt `version.json`, `preview` liefert diesen Build lokal aus.
+`dev:web` startet den Vite-Dev-Server von `apps/web`, Vite wählt den Port ab 5173. Die Version heißt `dev`, der Titel trägt den Hinweis `dev`, und die Prüfung auf neue Versionen ist aus. Die CSP erlaubt dort Inline-Skripte und `ws:` für HMR. `build:web` baut nach `apps/web/dist` und schreibt `version.json`, `preview` liefert diesen Build lokal unter Port 4317 aus. Dort läuft auch der Service Worker, nach einem neuen Build zeigt deshalb erst das zweite Laden die neue Fassung. Der eigene Port hält ihn von Vites Standardport 4173 fern, auf dem andere Projekte ihre Vorschau zeigen.
 
 `CONVEX_SITE_URL` kommt aus der Shell, sonst aus `.env` im Repository-Root. Ohne gültige `convex.site`-Adresse brechen `dev:web` und `build:web` ab, denn die CSP braucht die genauen Hosts. Erlaubt sind `https://NAME.convex.site` und `https://NAME.REGION.convex.site`. `vp run qa` baut die Web-App nicht und braucht den Wert nicht. `vp test run apps/web` prüft Anmeldung, Plattform und Aktualisierung, siehe [Verifikation](verification.md).
 
@@ -240,7 +255,7 @@ Die Icons liegen in `apps/web/public`: `apple-touch-icon.png` mit 180 × 180 Pix
 
 - **iOS 17.4 oder neuer.** Der Verlauf gruppiert seine Tage mit `Map.groupBy`, das Safari erst ab 17.4 kennt.
 - **WebKit-Bug 301994.** In installierten Web-Apps bleibt die Statusleiste sichtbar. `env(safe-area-inset-top)` liefert 0, ein fester Streifen liegt oben und schiebt den Inhalt nach unten, die Farbe am unteren Rand ändert sich erst nach einem Neustart der App. Gemeldet wurde der Bug für iOS 26.1. Mit 26.2 war er behoben, in 26.5.2 und in der Beta von iOS 27 ist er zurück, seit August 2026 ist er wieder offen. Einen Workaround gibt es nicht. Die App ist ab dem ersten Bild schwarz und funktioniert auch mit einem Abstand von 0. Ein Streifen oben ist dann der Bug, kein Fehler der App.
-- **Kein Offline-Modus.** Ohne Service Worker startet die App nur mit Netz. Fehlt die Verbindung später, sperrt sie Änderungen wie der Mac.
-- **Geräteschlüssel in localStorage.** Der Schlüssel liegt im Klartext im Speicher der Seite und läuft nie ab. Jedes Skript auf `task.shubrt.me` könnte ihn lesen. Schutz bieten nur die strikte CSP ohne Inline- und Fremdskripte und der Host. Wer Railway, das Repository, die Domain oder ihren DNS-Eintrag kontrolliert, kann Code ausliefern, der ihn liest. Mit dem Schlüssel lassen sich alle Aufgaben lesen und ändern und andere Schlüssel widerrufen, neue Schlüssel aber nur mit einer frischen Shoo-Anmeldung anlegen. Bei Verdacht den Schlüssel auf dem Mac widerrufen.
+- **Kein Offline-Modus.** Dank Service Worker startet die App auch ohne Netz, Aufgaben zeigt sie dann aber nicht. Angemeldet erscheint "Deine Aufgaben sind gerade nicht erreichbar." mit "Erneut verbinden", sonst die Anmeldung, die ohne Netz nicht weiterkommt. Fehlt die Verbindung später, sperrt sie Änderungen wie der Mac.
+- **Geräteschlüssel in localStorage.** Der Schlüssel liegt im Klartext im Speicher der Seite und läuft nie ab. Jedes Skript auf `task.shubrt.me` könnte ihn lesen. Schutz bieten nur die strikte CSP ohne Inline- und Fremdskripte und der Host. Wer Railway, das Repository, die Domain oder ihren DNS-Eintrag kontrolliert, kann Code ausliefern, der ihn liest. Mit dem Schlüssel lassen sich alle Aufgaben lesen und ändern und andere Schlüssel widerrufen, neue Schlüssel aber nur mit einer frischen Shoo-Anmeldung anlegen. Bei Verdacht den Schlüssel auf dem Mac widerrufen und die App vom Home-Bildschirm löschen, bevor man sie neu installiert und sich anmeldet. Fremder Code kann sich sonst als Seite in den Cache des Service Workers schreiben und auch nach einem bereinigten Deploy bei jedem Start und bei der nächsten Anmeldung mitlaufen. Das Löschen entfernt Service Worker, Cache und localStorage.
 - **Speicher.** Ob iOS den Speicher auf Dauer hält, steht in der Checkliste unter [Verifikation](verification.md#iphone) noch aus. Geht er verloren, bleibt ein verwaister Schlüssel, siehe [Schlüssel widerrufen](#schlüssel-widerrufen).
 - **Keine lokale Anmeldung,** siehe [Entwicklung](#entwicklung).

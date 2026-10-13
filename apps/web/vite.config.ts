@@ -102,4 +102,7 @@ function todoWeb(): Plugin {
 
 export default defineConfig({
   plugins: [react(), todoWeb()],
+  // The preview registers the service worker, which would keep answering on Vite's default port
+  // 4173 for any other project previewed there later.
+  preview: { port: 4317 },
 });

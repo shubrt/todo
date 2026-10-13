@@ -24,6 +24,7 @@ import {
   type Platform,
   type PlatformState,
 } from "../src/platform";
+import { startQueries } from "../src/start";
 import { useApp } from "../src/store";
 
 type Args = Record<string, unknown>;
@@ -477,7 +478,7 @@ let root: Root;
 async function render(platform: Platform = bridge) {
   backend.shell = platform;
   await act(async () => root.render(<App platform={platform} />));
-  // Lets lists.bootstrap resolve, which gates the workspace.
+  // Lets lists.bootstrap settle; a rejection replaces the workspace with the failure.
   await act(async () => {});
 }
 const $ = (selector: string) => container.querySelector<HTMLElement>(selector);
@@ -652,19 +653,17 @@ describe("Anmeldung und Verbindung", () => {
     expect($(".st")?.className).toBe("st off");
   });
 
-  it("zeigt beim Laden keinen Titel, bis die Liste da ist", async () => {
-    const bootstrap = Promise.withResolvers<null>();
-    mutation("lists:bootstrap").mockReturnValueOnce(bootstrap.promise);
+  it("zeigt beim Verbinden keinen Titel und danach die Liste, ohne auf lists.bootstrap zu warten", async () => {
+    mutation("lists:bootstrap").mockReturnValueOnce(new Promise(() => {}));
     backend.auth = { isLoading: true, isAuthenticated: false };
     await render();
     expect(title()).toBe("");
+    expect($(".side")).toBeNull();
     await act(async () =>
       backend.change(() => (backend.auth = { isLoading: false, isAuthenticated: true })),
     );
-    expect(title()).toBe("");
-    expect($(".side")).toBeNull();
-    await act(async () => bootstrap.resolve(null));
     expect(title()).toBe("💻work");
+    expect($(".side")).not.toBeNull();
   });
 
   it("zeigt einen fehlgeschlagenen Start mit Grund und versucht es mit ↵ erneut", async () => {
@@ -674,6 +673,16 @@ describe("Anmeldung und Verbindung", () => {
     expect($(".login .act")?.textContent).toBe("Erneut versuchen↵");
     expect($(".side")).toBeNull();
     await press("enter");
+    await act(async () => {});
+    expect(mutation("lists:bootstrap")).toHaveBeenCalledTimes(2);
+    expect(title()).toBe("💻work");
+  });
+
+  it("versucht einen fehlgeschlagenen Start nach einer neuen Verbindung von selbst erneut", async () => {
+    mutation("lists:bootstrap").mockRejectedValueOnce(new Error("Server Error"));
+    await render();
+    expect($(".login p")?.textContent).toBe("Deine Listen konnten nicht geladen werden.");
+    await act(async () => backend.change(() => backend.connection.connectionCount++));
     await act(async () => {});
     expect(mutation("lists:bootstrap")).toHaveBeenCalledTimes(2);
     expect(title()).toBe("💻work");
@@ -1027,6 +1036,43 @@ describe("Start", () => {
     await render();
     expect(title()).toBe("‼️Wichtig");
   });
+
+  it("wartet beim ersten Anmelden auf die angelegten Listen, statt in Wichtig zu starten", async () => {
+    // Wichtig, the first favorite of the fixtures.
+    data.lists[0]!.favorite = false;
+    const seeded = data.lists;
+    data.lists = [];
+    const bootstrap = Promise.withResolvers<null>();
+    mutation("lists:bootstrap").mockReturnValueOnce(bootstrap.promise);
+    await render();
+    expect(title()).toBe("");
+    expect($(".side")).toBeNull();
+    await act(async () => {
+      backend.change(() => (data.lists = seeded));
+      bootstrap.resolve(null);
+    });
+    expect(title()).toBe("💌me");
+  });
+
+  it.each([
+    ["work", listIds.work, "tasks"],
+    ["Habits", listIds.habits, "habits"],
+    ["Wichtig", listIds.important, "important"],
+    ["Wiederholungen", listIds.recurrences, "recurrences"],
+  ] as const)(
+    "merkt sich %s als Start und wärmt beim nächsten Start genau dessen Abfragen vor",
+    async (_name, id, kind) => {
+      data.lists.forEach((entry) => (entry.favorite = entry._id === id));
+      const queried = vi.spyOn(backend, "query");
+      onTestFinished(() => queried.mockRestore());
+      await render();
+      expect(JSON.parse(localStorage.getItem("todo.start")!)).toEqual({ id, kind });
+      const key = (name: string, args: unknown) => `${name}:${JSON.stringify(args)}`;
+      const subscribed = new Set(queried.mock.calls.map(([name, args]) => key(name, args)));
+      const prewarmed = startQueries().map(({ query, args }) => key(nameOf(query), args));
+      expect(prewarmed.toSorted()).toEqual([...subscribed].toSorted());
+    },
+  );
 
   it("behält eine Liste, die vor dem Laden der Listen geöffnet wurde", async () => {
     const lists = loading("lists:list");

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import type { Platform, PlatformState } from "./platform";
+import { startQueries } from "./start";
 
 type PlatformContextValue = {
   platform: Platform;
@@ -105,6 +106,31 @@ function useDeviceAuth() {
   return { isLoading: !state, isAuthenticated: Boolean(state?.configured), fetchAccessToken };
 }
 
+/** Decided by the page's first client, see clientOptions. */
+let reuseFirstToken: boolean | undefined;
+
+/**
+ * The client holds every request until it sends the first token (`expectAuth`). It keeps that
+ * token until shortly before it expires (`initialAuthTokenReuse`) instead of fetching a second
+ * one right away, which would make the server run every query again. Convex dates that expiry
+ * from performance.now() at its first socket use in the page, so a page whose first client
+ * starts late, like the Mac window after a first login, would refresh the token only after it
+ * expired. Such a page fetches the second token as before.
+ */
+function clientOptions() {
+  reuseFirstToken ??= performance.now() < 5_000;
+  return { expectAuth: true, initialAuthTokenReuse: reuseFirstToken };
+}
+
+/** How long prewarmed start queries stay subscribed without a view, room for a slow token. */
+const prewarmFor = 30_000;
+
+/**
+ * One Convex client per connection. The start queries (see startQueries) wait behind the held
+ * requests and go out together with the token, so one round trip brings the first screen.
+ * Without a token the client still sends them; they fail unread while the window shows the
+ * login or offline view.
+ */
 export function ConnectedProvider({
   cloudUrl,
   children,
@@ -112,18 +138,19 @@ export function ConnectedProvider({
   cloudUrl: string;
   children: ReactNode;
 }) {
-  const [client] = useState(() => new ConvexReactClient(cloudUrl));
+  const [client] = useState(() => new ConvexReactClient(cloudUrl, clientOptions()));
   const [rejected, setRejected] = useState(false);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    for (const query of startQueries())
+      client.prewarmQuery({ ...query, extendSubscriptionFor: prewarmFor });
+    return () => {
       // ConvexProviderWithAuth clears auth in its child cleanup. Let that finish
       // before closing the shared client when this provider is replaced.
       queueMicrotask(() => {
         void client.close();
       });
-    },
-    [client],
-  );
+    };
+  }, [client]);
   return (
     <TokenRejectedContext.Provider value={{ rejected, setRejected }}>
       <ConvexProviderWithAuth client={client} useAuth={useDeviceAuth}>

@@ -205,8 +205,13 @@ async function start() {
     if (!isTrustedRenderer(url, rendererFile, devOrigin)) event.preventDefault();
   });
   mainWindow.webContents.on("will-attach-webview", (event) => event.preventDefault());
-  // A reload drops the view that waits for the browser login, so cancel the login as well.
-  mainWindow.webContents.on("did-start-loading", () => shooLogin.cancel());
+  // A reload drops the view that waits for the browser login, so cancel the login as well. Its
+  // new client keeps the first token until shortly before expiry, so it gets a fresh one: a
+  // cached token may belong to a key revoked since, which would fail every query.
+  mainWindow.webContents.on("did-start-loading", () => {
+    shooLogin.cancel();
+    if (connection) tokenProvider = createTokenProvider(connection);
+  });
   mainWindow.webContents.session.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false),
   );
