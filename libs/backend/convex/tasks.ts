@@ -109,11 +109,14 @@ export const discard = mutation({
   handler: async (ctx, args) =>
     executeCommand(ctx, await requireOwner(ctx), { type: "discard", ...args }),
 });
-/** A no-op when the inbox flag is already cleared. */
-export const clearInbox = mutation({
+/**
+ * The app selected the task: clears its inbox dot and the alarm clock of an ended snooze. A
+ * no-op when both are already cleared.
+ */
+export const markSeen = mutation({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) =>
-    executeCommand(ctx, await requireOwner(ctx), { type: "clearInbox", ...args }),
+    executeCommand(ctx, await requireOwner(ctx), { type: "markSeen", ...args }),
 });
 export const normalizeUrgency = mutation({
   args: { taskId: v.id("tasks") },

@@ -51,7 +51,10 @@ type AppState = {
   current: ListRef | null;
   /** Id of the selected Selectable. */
   selection: string | null;
-  /** The selection was made by opening a list, not by the user (it does not clear the inbox). */
+  /**
+   * The selection was made by opening a list, not by the user: it clears neither the inbox dot
+   * nor the alarm clock of an ended snooze (see useMarkSeen).
+   */
   autoSelected: boolean;
   /**
    * Select the first row as soon as the opened list publishes its rows. Not on touch, where

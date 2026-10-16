@@ -205,7 +205,7 @@ function Workspace() {
   const list = lists && resolveList(lists, current);
   useStartList(lists, settings);
   useWorkspaceKeys({ lists, list, settings });
-  useInboxClear();
+  useMarkSeen();
   return (
     <Frame
       title={
@@ -266,17 +266,19 @@ function useStartList(lists: List[] | undefined, settings: Settings | undefined)
 }
 
 /**
- * Selecting a task from the inbox clears its blue dot on the server. The automatic selection
- * when a list opens does not count, so the newest task keeps its dot until you select it.
+ * Selecting a task clears its marks on the server: the blue dot of the inbox and the alarm
+ * clock of an ended snooze. The automatic selection when a list opens does not count, so the
+ * top task keeps its mark until you select it.
  */
-function useInboxClear() {
+function useMarkSeen() {
   const actions = useTaskActions();
   const taskId = useApp((state) => {
     const item = selectedTask(state);
-    return item?.task.isInbox && !state.autoSelected ? item.id : undefined;
+    if (!item || state.autoSelected) return undefined;
+    return item.task.isInbox || item.task.isWoken ? item.id : undefined;
   });
   useEffect(() => {
-    if (taskId) void actions.clearInbox(taskId);
+    if (taskId) void actions.markSeen(taskId);
   }, [taskId, actions]);
 }
 

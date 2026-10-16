@@ -1161,9 +1161,9 @@ describe("Normale Liste", () => {
     await press("mod+2");
     expect(app().selection).toBe("mama");
     expect(rowOf("Mama anrufen")?.querySelector(".inb")).not.toBeNull();
-    expect(mutation("tasks:clearInbox")).not.toHaveBeenCalled();
+    expect(mutation("tasks:markSeen")).not.toHaveBeenCalled();
     await click(rowOf("Mama anrufen"));
-    expect(mutation("tasks:clearInbox")).toHaveBeenCalledWith({ taskId: "mama" });
+    expect(mutation("tasks:markSeen")).toHaveBeenCalledWith({ taskId: "mama" });
   });
 
   it("löscht den Inbox-Punkt beim Auswählen still auf dem Server", async () => {
@@ -1172,8 +1172,31 @@ describe("Normale Liste", () => {
     await click(rowOf("Reise DB"));
     expect(app().selection).toBe("reise");
     expect(rowOf("Reise DB")?.querySelector(".inb")).toBeNull();
-    expect(mutation("tasks:clearInbox")).toHaveBeenCalledWith({ taskId: "reise" });
-    expect(mutation("tasks:clearInbox")).toHaveBeenCalledTimes(1);
+    expect(mutation("tasks:markSeen")).toHaveBeenCalledWith({ taskId: "reise" });
+    expect(mutation("tasks:markSeen")).toHaveBeenCalledTimes(1);
+  });
+
+  it("zeigt nach einem Snooze den Wecker, bis du die Aufgabe selbst auswählst", async () => {
+    backend.change(() => {
+      for (const task of data.tasks)
+        if (task._id === "umbau" || task._id === "mama") task.isWoken = true;
+    });
+    await render();
+    const alarm = (title: string) => rowOf(title)?.querySelector(".acc .woke");
+    // In the snooze's place, before ‼️.
+    expect(alarm("Umbau auf Todo App")?.getAttribute("aria-label")).toBe("Geweckt");
+    expect(alarm("Umbau auf Todo App")?.nextElementSibling?.textContent).toBe("‼️");
+    await click(rowOf("Servoy API Scripts"));
+    await press("down");
+    expect(app().selection).toBe("umbau");
+    expect(alarm("Umbau auf Todo App")).toBeNull();
+    expect(mutation("tasks:markSeen")).toHaveBeenCalledExactlyOnceWith({ taskId: "umbau" });
+
+    // Opening a list selects its top task, which keeps the alarm clock.
+    await press("mod+2");
+    expect(app().selection).toBe("mama");
+    expect(alarm("Mama anrufen")).not.toBeNull();
+    expect(mutation("tasks:markSeen")).toHaveBeenCalledTimes(1);
   });
 
   it("benennt mit ↵ um, speichert mit ↵, verwirft mit esc und erledigt mit ⌘↵", async () => {
@@ -1918,6 +1941,27 @@ describe("Touch", () => {
     expect(app().editing).toEqual({ type: "rename", id: "umbau" });
     expect(field().value).toBe("Umbau auf Todo App");
     expect(app().panels).toEqual([]);
+  });
+
+  it("nimmt den Wecker mit einem Tipp weg, die Schublade eines langen Drucks zeigt ihn nicht", async () => {
+    backend.change(() => {
+      for (const task of data.tasks)
+        if (task._id === "umbau" || task._id === "reise") task.isWoken = true;
+    });
+    await render();
+    // The edited row shows a field instead of its title, so rows are found by id here.
+    const alarm = (id: string) => $(`[data-task="${id}"] .woke`);
+    expect(alarm("umbau")).not.toBeNull();
+    await tap(rowOf("Umbau auf Todo App")?.querySelector(".t"));
+    expect(app().editing).toEqual({ type: "rename", id: "umbau" });
+    expect(alarm("umbau")).toBeNull();
+    expect(mutation("tasks:markSeen")).toHaveBeenCalledWith({ taskId: "umbau" });
+
+    await hold(rowOf("Reise DB"));
+    expect(app().panels).toEqual([{ type: "actions", taskId: "reise" }]);
+    expect(alarm("reise")).toBeNull();
+    expect($(".pal .hd .woke")).toBeNull();
+    expect(mutation("tasks:markSeen")).toHaveBeenCalledWith({ taskId: "reise" });
   });
 
   it("wechselt mit einem Tipp auf eine andere Zeile das Bearbeiten und speichert die erste", async () => {

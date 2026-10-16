@@ -70,7 +70,7 @@ function useActionsValue() {
   const move = useMutation(api.tasks.move);
   const reorder = useMutation(api.tasks.reorder);
   const discard = useMutation(api.tasks.discard);
-  const clearInbox = useMutation(api.tasks.clearInbox);
+  const markSeen = useMutation(api.tasks.markSeen);
   const normalizeUrgency = useMutation(api.tasks.normalizeUrgency);
   const plan = useMutation(api.tasks.plan);
   const snooze = useMutation(api.tasks.snooze);
@@ -169,9 +169,12 @@ function useActionsValue() {
         write(task._id, () => plan({ taskId: task._id, dueOn })),
       snooze: (task: Task, snoozedUntil: number | null) =>
         write(task._id, () => snooze({ taskId: task._id, snoozedUntil })),
-      /** Silent and keyed apart, so it never blocks or toasts over a ⌘↵ on the same row. */
-      clearInbox: (taskId: Id<"tasks">) =>
-        write(`inbox:${taskId}`, () => clearInbox({ taskId }), { silent: true }),
+      /**
+       * Clears the inbox dot and the alarm clock. Silent and keyed apart, so it never blocks or
+       * toasts over a ⌘↵ on the same row.
+       */
+      markSeen: (taskId: Id<"tasks">) =>
+        write(`seen:${taskId}`, () => markSeen({ taskId }), { silent: true }),
       /** Makes the task the last subtask of the open root above it, which gets expanded. */
       indent: (task: Task) => {
         const item = findTask(store().items, task._id);
@@ -207,7 +210,7 @@ function useActionsValue() {
     reorder,
     reorderNow,
     discard,
-    clearInbox,
+    markSeen,
     normalizeUrgency,
     plan,
     snooze,

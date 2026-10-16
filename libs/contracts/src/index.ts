@@ -181,9 +181,17 @@ export const commandSchema = z.discriminatedUnion("type", [
     taskId: idSchema,
     occurrenceKey: dateSchema.optional(),
   }),
-  ...(["reopen", "discard", "clearInbox", "normalizeUrgency", "indent", "outdent"] as const).map(
-    (type) => z.strictObject({ type: z.literal(type), taskId: idSchema }),
-  ),
+  ...(
+    [
+      "reopen",
+      "discard",
+      "clearInbox",
+      "markSeen",
+      "normalizeUrgency",
+      "indent",
+      "outdent",
+    ] as const
+  ).map((type) => z.strictObject({ type: z.literal(type), taskId: idSchema })),
   z.strictObject({
     type: z.literal("plan"),
     taskId: idSchema,

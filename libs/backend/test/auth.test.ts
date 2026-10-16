@@ -689,6 +689,17 @@ describe("external API", () => {
     expect((await (await get(t, `/api/v1/tasks/${id}`)).json()).data.state).toBe("open");
     expect(await t.run((ctx) => ctx.db.query("completions").collect())).toEqual([]);
   });
+  it("clears only the inbox mark through its route", async () => {
+    const { t } = await fixture();
+    const { id } = (await (await post(t, "/api/v1/tasks", "create", { title: "Belege" })).json())
+      .data;
+    await t.run((ctx) => ctx.db.patch(id as Id<"tasks">, { isWoken: true }));
+    expect((await post(t, `/api/v1/tasks/${id}/clear-inbox`, "clear")).status).toBe(200);
+    expect((await (await get(t, `/api/v1/tasks/${id}`)).json()).data).toMatchObject({
+      isInbox: false,
+      isWoken: true,
+    });
+  });
   it("migrates legacy area data before the first HTTP read", async () => {
     vi.setSystemTime(new Date("2026-09-05T10:00:00Z"));
     const { t } = await fixture();

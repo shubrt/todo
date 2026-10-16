@@ -72,7 +72,7 @@ describe("capture, hierarchy and manual ordering", () => {
     ).toEqual([c, b, a]);
     await user.mutation(api.tasks.reorder, { taskIds: [a, c, b] });
     const before = await user.query(api.tasks.get, { taskId: c });
-    await user.mutation(api.tasks.clearInbox, { taskId: c });
+    await user.mutation(api.tasks.markSeen, { taskId: c });
     const after = await user.query(api.tasks.get, { taskId: c });
     expect(after).toMatchObject({
       listId: agency,
@@ -81,7 +81,7 @@ describe("capture, hierarchy and manual ordering", () => {
       position: before.position,
     });
     day("2026-09-05T10:05:00Z");
-    await user.mutation(api.tasks.clearInbox, { taskId: c });
+    await user.mutation(api.tasks.markSeen, { taskId: c });
     expect((await user.query(api.tasks.get, { taskId: c })).updatedAt).toBe(after.updatedAt);
     expect((await user.query(api.tasks.list, { view: "list" })).map((task) => task._id)).toEqual([
       a,
@@ -519,6 +519,39 @@ describe("calendar planning, snooze and recurrence processing", () => {
     day("2026-09-06T12:00:00Z");
     await t.mutation(internal.scheduling.wake, { taskId, version: updated.scheduleVersion });
     expect(await user.query(api.tasks.get, { taskId })).toMatchObject({ isDeferred: false });
+  });
+
+  it("marks a task woken when its snooze ends, until the app has seen it", async () => {
+    const { user, t, me } = await setup();
+    const get = (taskId: Id<"tasks">) => user.query(api.tasks.get, { taskId });
+    const create = (title: string) =>
+      user.mutation(api.tasks.create, { title, listId: me, isInbox: false });
+    const taskId = await create("Snoozed");
+    const planned = await create("Planned");
+    // Snoozed until today, then planned for tomorrow: the planned day brings it back.
+    await user.mutation(api.tasks.snooze, {
+      taskId: planned,
+      snoozedUntil: Date.parse("2026-09-05T12:00:00Z"),
+    });
+    await user.mutation(api.tasks.plan, { taskId: planned, plannedFor: "2026-09-06" });
+    const snooze = (at: string) =>
+      user.mutation(api.tasks.snooze, { taskId, snoozedUntil: Date.parse(at) });
+    await snooze("2026-09-05T12:00:00Z");
+    day("2026-09-05T12:00:00Z");
+    await t.mutation(internal.scheduling.tick, {});
+    expect(await get(taskId)).toMatchObject({ isWoken: true, isDeferred: false });
+    // A new snooze drops the mark until that one ends.
+    await snooze("2026-09-06T08:00:00Z");
+    expect(await get(taskId)).not.toHaveProperty("isWoken");
+    day("2026-09-06T08:00:00Z");
+    await t.mutation(internal.scheduling.tick, {});
+    expect(await get(taskId)).toMatchObject({ isWoken: true });
+    // A planned day brings its task back without the mark, even after its snooze lapsed.
+    expect(await get(planned)).toMatchObject({ isDeferred: false });
+    expect(await get(planned)).not.toHaveProperty("isWoken");
+    // Selecting the task in the app clears the mark.
+    await user.mutation(api.tasks.markSeen, { taskId });
+    expect(await get(taskId)).not.toHaveProperty("isWoken");
   });
 
   it("reschedules calendar wake-ups on timezone changes and ignores the old timezone job", async () => {

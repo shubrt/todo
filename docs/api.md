@@ -147,6 +147,10 @@ Priorität. Eine bereits fällige verbindliche Frist bleibt dagegen sichtbar.
 ausdrücklich gesetzten Snooze-Zeitpunkt bei. Zum sofortigen Einblenden zusätzlich
 `snoozedUntil: null` senden.
 
+Endet ein Snooze, trägt die Aufgabe `isWoken: true`, bis sie in der App
+ausgewählt wird. Jeder Aufruf von `snooze` entfernt das Feld, auch mit `null`.
+`clear-inbox` ändert daran nichts.
+
 `reopen` öffnet eine Aufgabe wieder, die am heutigen lokalen Tag erledigt
 wurde. Der Server löscht ihren Erledigungseintrag und setzt sie oben in den
 offenen Block. Ab dem nächsten Tag ist sie archiviert, dann antwortet `reopen`
