@@ -76,6 +76,7 @@ Die Oberfläche gleicht der am Mac, siehe [Bedienung](desktop.md#bedienung). Auf
 - Die Checkbox erledigt eine Aufgabe oder öffnet sie wieder. Die Subtask-Zahl wie `0/5` klappt die Subtasks auf und zu.
 - Ein Tipp auf eine Aufgabe, einen Habit oder eine Wiederholung macht ihren Titel zum Eingabefeld, wie am Mac `↵` oder ein Doppelklick. Die Tastatur öffnet sich sofort. "Fertig" auf der Tastatur speichert wie `↵`.
 - Ein Tipp auf eine andere Zeile speichert den Titel in Arbeit und bearbeitet dann die getippte Zeile. Ein Tipp auf die Zeile, die gerade bearbeitet wird, startet weder eine neue Bearbeitung noch eine Schublade.
+- Ein Tipp oder ein langer Druck wählt die Zeile aus. Wie am Mac verschwinden dabei Inbox-Punkt und Wecker, siehe [Aufgaben](desktop.md#aufgaben).
 - Erledigte Einträge im Verlauf reagieren weder auf Tippen noch auf langen Druck.
 - Verwerfen wirkt wie am Mac sofort und ohne Rückfrage.
 - Wischaktionen auf Zeilen und Kontextmenüs gibt es nicht.

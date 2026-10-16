@@ -500,12 +500,15 @@ export async function wakeTask(ctx: MutationCtx, taskId: Id<"tasks">, version: n
   const today = localDate(Date.now(), settings.timeZone);
   if (today !== settings.currentLocalDate)
     await ctx.db.patch(settings._id, { currentLocalDate: today });
-  const snoozedUntil =
-    task.snoozedUntil && task.snoozedUntil <= Date.now() ? undefined : task.snoozedUntil;
+  const snoozeEnded = task.snoozedUntil !== undefined && task.snoozedUntil <= Date.now();
+  // Only a wake the snooze scheduled marks the task (applySchedule sets wakeAt to snoozedUntil
+  // exactly then). A planned day or due date does not, even after a snooze that lapsed unseen.
+  const woken = snoozeEnded && task.wakeAt === task.snoozedUntil;
   const position = await topPosition(ctx, task.ownerId, { ...task, section: "active" });
   await ctx.db.patch(task._id, {
     section: "active",
-    snoozedUntil,
+    snoozedUntil: snoozeEnded ? undefined : task.snoozedUntil,
+    ...(woken ? { isWoken: true } : {}),
     position,
     wakeAt: undefined,
     updatedAt: Date.now(),
@@ -619,6 +622,7 @@ async function indentTask(ctx: MutationCtx, task: Task, today: string, now: numb
     wakeAt: undefined,
     highPriority: false,
     isInbox: false,
+    isWoken: undefined,
     scheduleVersion: task.scheduleVersion + 1,
     updatedAt: now,
   });
@@ -765,6 +769,8 @@ export async function executeCommand(ctx: MutationCtx, ownerId: string, rawComma
     return addChild(ctx, ownerId, task._id, command.title, command.isAi);
   if (command.type === "clearInbox" && task.isInbox)
     await ctx.db.patch(task._id, { isInbox: false, updatedAt: now });
+  if (command.type === "markSeen" && (task.isInbox || task.isWoken))
+    await ctx.db.patch(task._id, { isInbox: false, isWoken: undefined, updatedAt: now });
   if (command.type === "update") {
     if (task.parentId && command.input.highPriority !== undefined)
       fail("INVALID_INPUT", "Priorität gehört zur Hauptaufgabe.");
@@ -881,8 +887,10 @@ export async function executeCommand(ctx: MutationCtx, ownerId: string, rawComma
     if (command.type === "snooze") {
       if (command.snoozedUntil !== null && command.snoozedUntil <= now)
         fail("INVALID_INPUT", "Der Zeitpunkt muss in der Zukunft liegen.");
+      // Any change of the snooze drops the alarm clock of an earlier one.
       await ctx.db.patch(task._id, {
         snoozedUntil: command.snoozedUntil ?? undefined,
+        isWoken: undefined,
         updatedAt: now,
       });
     }

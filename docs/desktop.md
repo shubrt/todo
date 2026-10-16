@@ -177,7 +177,7 @@ Jede Aufgabe ist eine Zeile mit Checkbox in der Listenfarbe und Titel. Rechts fo
 3. ↻ für die Instanz einer Wiederholung
 4. Fahne mit Frist, orange am Fälligkeitstag, rot danach
 5. Kalender mit Planungstag
-6. Uhr mit Snooze-Zeitpunkt, etwa `Di., 9:00`
+6. Uhr mit Snooze-Zeitpunkt, etwa `Di., 9:00`, nach dem Ende des Snooze ein gelber Wecker
 7. ‼️ für hohe Priorität
 
 Tage stehen relativ da: heute, morgen und innerhalb der nächsten sechs Tage der Wochentag wie `Mo.`, bei überfälligen Fristen auch gestern oder ein vergangener Wochentag, sonst ein Datum wie `16. Okt.`. Erledigte Zeilen sind durchgestrichen und zeigen keine Details.
@@ -185,6 +185,8 @@ Tage stehen relativ da: heute, morgen und innerhalb der nächsten sechs Tage der
 Beim Öffnen einer Liste ist die oberste Aufgabe markiert, in einer leeren Liste der Abschnitt Tasks. Die Pfeiltasten arbeiten also sofort.
 
 Ein blauer Punkt am linken Rand markiert eine Aufgabe aus der Inbox, also eine über die API erfasste. Sobald die Zeile mit Tastatur oder Maus ausgewählt wird, entfernt die App die Markierung im Backend. Die automatische Markierung beim Öffnen einer Liste zählt dabei nicht. Die Position bleibt dabei gleich. Ohne Verbindung bleibt der Punkt, bis die Zeile wieder ausgewählt wird.
+
+Endet ein Snooze, holt das Backend die Aufgabe oben in Tasks zurück, und an der Stelle der Uhr steht ein gelber Wecker. Er verschwindet wie der Inbox-Punkt, sobald die Zeile mit Tastatur oder Maus ausgewählt wird, und zwar auf allen Geräten. Die automatische Markierung beim Öffnen einer Liste zählt auch hier nicht. Ein neuer Snooze entfernt den Wecker ebenfalls. Eingeplante Aufgaben kommen ohne Wecker zurück.
 
 Subtasks stehen eingerückt unter ihrer Aufgabe, eine Ebene tief. Sie bleiben zugeklappt, bis `→` oder ein Klick auf die Subtask-Zahl sie zeigt. Eine erledigte Subtask erledigt den Parent nicht, und ein erledigter Parent darf offene Subtasks haben.
 
@@ -194,7 +196,7 @@ Ein Klick wählt eine Zeile aus, ein Doppelklick bearbeitet den Titel, ein Recht
 
 `⌘↵` auf einer heute erledigten Aufgabe öffnet sie wieder und löscht ihren Eintrag im Verlauf. Nach dem nächtlichen Aufräumen ist sie archiviert, dann lehnt das Backend das ab.
 
-`⇥` macht die ausgewählte offene Hauptaufgabe zur letzten Subtask der nächsten offenen Hauptaufgabe darüber im selben Abschnitt. Planungstag, Frist, Snooze und hohe Priorität fallen dabei weg. Aufgaben mit eigenen Subtasks, Habits und wiederkehrende Aufgaben lassen sich nicht einrücken. `⇧⇥` macht eine Subtask wieder zur Hauptaufgabe, direkt hinter ihrem bisherigen Parent.
+`⇥` macht die ausgewählte offene Hauptaufgabe zur letzten Subtask der nächsten offenen Hauptaufgabe darüber im selben Abschnitt. Planungstag, Frist, Snooze, Wecker und hohe Priorität fallen dabei weg. Aufgaben mit eigenen Subtasks, Habits und wiederkehrende Aufgaben lassen sich nicht einrücken. `⇧⇥` macht eine Subtask wieder zur Hauptaufgabe, direkt hinter ihrem bisherigen Parent.
 
 Wichtig zeigt von jeder Liste nur einen Teil, die Nachbarn einer Aufgabe stehen dort oft nicht im Bild. Deshalb gehen in Wichtig weder `⇥` und `⇧⇥` noch `⌥↑` und `⌥↓`, und `⌘K` bietet dort Einrücken, Ausrücken, Nach oben und Nach unten nicht an.
 

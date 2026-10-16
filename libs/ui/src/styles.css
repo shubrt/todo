@@ -21,6 +21,8 @@
   --late: #ff6961;
   --danger: #ff6961;
   --inbox: #0a84ff;
+  /* The alarm clock of a task whose snooze ended, until it is selected. */
+  --woke: #ffba00;
   --ok: #30d158;
   --wait: #ffd60a;
   --off: #ff453a;
@@ -105,6 +107,9 @@ kbd {
 }
 .today {
   color: var(--today);
+}
+.woke {
+  color: var(--woke);
 }
 
 /* Window */

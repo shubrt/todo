@@ -1,5 +1,14 @@
 import type { Id } from "@todo/backend/dataModel";
-import { Calendar, Check, ChevronDown, ChevronRight, Clock, Flag, Repeat } from "lucide-react";
+import {
+  AlarmClock,
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Flag,
+  Repeat,
+} from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Day, Task } from "./data";
@@ -198,10 +207,10 @@ export function useRowTap(id: string) {
 
 /**
  * One task: checkbox in the list color, title, details in fixed order (⚡️, subtasks, ↻, due,
- * planned, snooze, ‼️) and optional habit dots. Click selects, double click renames, right
- * click opens ⌘K; on touch a tap renames, and a long press opens ⌘K as a drawer on release or
- * drags the row once the finger moves (drag.ts, which finds it by `data-task`). Done rows show
- * no details.
+ * planned, snooze or the alarm clock of an ended one, ‼️) and optional habit dots. Click
+ * selects, double click renames, right click opens ⌘K; on touch a tap renames, and a long press
+ * opens ⌘K as a drawer on release or drags the row once the finger moves (drag.ts, which finds
+ * it by `data-task`). Done rows show no details.
  */
 export function TaskRow({
   task,
@@ -221,7 +230,7 @@ export function TaskRow({
     (state) => state.editing?.type === "rename" && state.editing.id === task._id,
   );
   const expanded = useApp((state) => Boolean(state.expanded[task._id]));
-  // The inbox dot stays while the row is only selected because its list just opened.
+  // Inbox dot and alarm clock stay while the row is only selected because its list just opened.
   const seen = useApp((state) => selected && !state.autoSelected);
   const actions = useTaskActions();
   const done = task.state === "done";
@@ -282,23 +291,37 @@ export function TaskRow({
           )}
         </div>
       </div>
-      <Details task={task} day={day} subtasks={subtasks} expanded={expanded} week={week} />
+      <Details
+        task={task}
+        day={day}
+        subtasks={subtasks}
+        expanded={expanded}
+        week={week}
+        woke={Boolean(task.isWoken) && !seen}
+      />
     </div>
   );
 }
 
+/**
+ * The row's details. `woke` adds the alarm clock of an ended snooze in the snooze's place; it
+ * stays out of dateDetails, so a drawer opened on the row does not show it until the server
+ * clears it.
+ */
 function Details({
   task,
   day,
   subtasks,
   expanded,
   week,
+  woke,
 }: {
   task: Task;
   day: Day;
   subtasks?: { done: number; total: number };
   expanded: boolean;
   week?: boolean[];
+  woke: boolean;
 }) {
   const open = task.state !== "done";
   const parts = open && [
@@ -327,6 +350,11 @@ function Details({
       </span>
     ),
     ...dateDetails(task, day),
+    woke && (
+      <span key="woke" className="a woke" role="img" aria-label="Geweckt">
+        <AlarmClock size={12} />
+      </span>
+    ),
     task.highPriority && (
       <span key="important" className="a">
         <span className="emo-s">‼️</span>

@@ -55,8 +55,8 @@ sein.
 
 Einrücken macht eine offene Hauptaufgabe zur letzten Subtask der nächsten
 offenen Hauptaufgabe darüber im selben Abschnitt. Dabei verliert sie
-Planungstag, Frist, Snooze, hohe Priorität und Inbox-Markierung, denn Subtasks
-haben keine eigenen. Eine Aufgabe mit eigenen Subtasks lässt sich nicht
+Planungstag, Frist, Snooze, Wecker, hohe Priorität und Inbox-Markierung, denn
+Subtasks haben keine eigenen. Eine Aufgabe mit eigenen Subtasks lässt sich nicht
 einrücken, Habits und wiederkehrende Aufgaben auch nicht.
 Ausrücken macht eine Subtask wieder zur Hauptaufgabe, direkt hinter ihrem
 bisherigen Parent. Wichtig zeigt nur einen Teil jeder Liste. Dort gibt es
@@ -87,6 +87,11 @@ bestehen. Gesnoozte Aufgaben mit manueller hoher Priorität erscheinen erst zur
 Wiedervorlage wieder in Wichtig. Eine bereits fällige verbindliche Frist
 bleibt auch während eines Snooze sichtbar. Wiedervorlagen sortieren einmalig
 oben ein, danach gilt wieder die manuelle Reihenfolge.
+
+Endet ein Snooze, trägt die Aufgabe einen Wecker, bis der Nutzer sie auswählt.
+Wie bei der Inbox-Markierung zählt die automatische Auswahl beim Öffnen einer
+Liste nicht. Ein neuer Snooze entfernt den Wecker. Eine eingeplante Aufgabe
+kommt ohne Wecker zurück, ihr Planungstag steht weiter in der Zeile.
 
 Wichtig sammelt die offenen Hauptaufgaben aller Listen mit hoher Priorität
 oder einer Frist bis heute, je Herkunftsliste in einem eigenen Abschnitt.

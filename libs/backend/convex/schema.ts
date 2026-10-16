@@ -36,6 +36,8 @@ export default defineSchema({
     plannedFor: v.optional(v.string()),
     dueOn: v.optional(v.string()),
     snoozedUntil: v.optional(v.number()),
+    // Set when a snooze ends; the row shows an alarm clock until the user selects it.
+    isWoken: v.optional(v.boolean()),
     scheduleVersion: v.number(),
     wakeAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
