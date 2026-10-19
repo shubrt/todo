@@ -35,15 +35,14 @@ Bildschirmfotos der Ansichten und Panels entsprachen dem Entwurf, und die
 ausgelösten Mutationen hatten die erwarteten Argumente. Auf einem echten Mac
 und gegen ein echtes Backend stehen aus:
 
-- Die Ampelknöpfe des `panel`-Fensters mit `titleBarStyle: "hidden"` sitzen
+- Die Ampelknöpfe des Fensters mit `titleBarStyle: "hidden"` sitzen
   mittig in der 40 Pixel hohen Titelleiste. Minimieren und Zoomen sind grau,
   Schließen blendet das Fenster aus. Ein Doppelklick auf die Titelleiste zoomt
   nicht, und Ziehen funktioniert, auch während ein Panel offen ist.
 - Die Emoji-Auswahl aus `app.showEmojiPanel()` schreibt in das fokussierte
-  Feld des Panels, obwohl das Fenster die App nicht aktiviert. `⌃⌘Leertaste`
-  erreicht den Renderer vor dem macOS-Menüeintrag für Emoji und Symbole, direkt
-  in der Listensuche und in den Listenaktionen. Die Zeile "Emoji wählen"
-  funktioniert in jedem Fall.
+  Feld. `⌃⌘Leertaste` erreicht den Renderer vor dem macOS-Menüeintrag für
+  Emoji und Symbole, direkt in der Listensuche und in den Listenaktionen. Die
+  Zeile "Emoji wählen" funktioniert in jedem Fall.
 - Die Umstellung mit echten Daten nach einem Backup, siehe
   [Entwicklung](development.md#umstellung-auf-listen). Danach gibt es die
   sieben Startlisten, jede Aufgabe steht in der Liste ihres Bereichs und im
@@ -110,6 +109,26 @@ von `https://task.shubrt.me` und angemeldet am Produktionsbackend, stehen aus:
 | Start ohne Netz                  | Im Flugmodus die App beenden und neu starten. Sie erscheint mit "Deine Aufgaben sind gerade nicht erreichbar." und "Erneut verbinden", nach dem Flugmodus verbindet "Erneut verbinden"                                                                                                                                                                                                                                                               |          |
 | Aktualisierung nach Deploy       | Nach einem Deploy lädt die App beim nächsten Wechsel in den Vordergrund einmal neu, Info > Version zeigt den neuen Commit. Mit offenem Panel oder offener Bearbeitung wartet sie, ohne Netz passiert nichts, eine Schleife gibt es nicht. Der erste Start nach einem Deploy darf noch die alte Version zeigen, spätestens der nächste Wechsel in den Vordergrund lädt die neue                                                                       |          |
 | Speicher nach Tagen              | `navigator.storage.persisted()` liefert `true`, abgefragt über den Web-Inspektor von Safari am Mac. Nach 1, 3 und 8 Tagen ohne Öffnen und nach einem Neustart des iPhones ist die App noch angemeldet. "Abmelden" widerruft den Schlüssel, die Liste am Mac bestätigt es                                                                                                                                                                             |          |
+
+## Fenster auf einem Schreibtisch
+
+Am 19. Oktober 2026 lief die Dev-Variante auf einem Mac mit zwei
+Schreibtischen. Die Schreibtische eines Fensters las `CGSCopySpacesForWindows`
+aus. Mit "Auf allen Schreibtischen" aus lag das Fenster nur auf dem
+Schreibtisch, auf dem es gestartet war, die installierte Version mit `panel`
+dagegen auf beiden. Öffnen aus dem Menüleistenmenü wechselte auf den
+Schreibtisch des Fensters, auch nachdem es ausgeblendet war. Ein- und
+Ausschalten auf dem anderen Schreibtisch holte es dorthin. Eingeschaltet lag
+es auch auf dem Schreibtisch einer Vollbild-App und war dort sichtbar.
+
+Die vorderste App laut `NSWorkspace` war nach dem Öffnen todo und nach dem
+Ausblenden wieder die App davor. Das galt auf demselben Schreibtisch, nach dem
+Sprung von einem anderen Schreibtisch und mit "Auf allen Schreibtischen", auch
+nach einem vorherigen `app.hide()`. Ein eigener Wechsel des Schreibtischs eine
+halbe Sekunde nach dem Öffnen holte das Fenster nicht zurück. Offen ist noch,
+ob `esc`, `⌘W` und der globale Kurzbefehl der installierten App den Fokus
+genauso zurückgeben. Die Dev-Variante hat keinen Kurzbefehl, getestet war das
+Menüleistenmenü.
 
 ## Stand 5. September 2026
 

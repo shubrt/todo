@@ -285,7 +285,9 @@ Regel und Liste lassen sich hier nicht ändern. Neue Habits entstehen mit `⌘N`
 
 ## Fenster und Sicherheitsgrenzen
 
-Electron 44.2.0 erstellt auf macOS ein `panel`. "Immer im Vordergrund" hebt es auf das Fensterlevel `floating`. "Auf allen Schreibtischen" setzt `setVisibleOnAllWorkspaces` mit `visibleOnFullScreen`, dann bleibt es auf allen Schreibtischen und über Vollbild-Apps sichtbar. Die installierte App ist mit `LSUIElement` als Menüleisten-App markiert. Sie blendet sich beim Wechsel zur anderen App nicht selbst aus.
+Electron 44.2.0 erstellt auf macOS ein normales Fenster, kein `panel`. Electrons `NSPanel` setzt bei jeder Änderung des Schreibtischverhaltens `CanJoinAllSpaces` wieder, damit ließe sich "Auf allen Schreibtischen" nicht abschalten. "Immer im Vordergrund" hebt das Fenster auf das Fensterlevel `floating`. "Auf allen Schreibtischen" setzt `setVisibleOnAllWorkspaces` mit `visibleOnFullScreen`, dann bleibt es auf allen Schreibtischen und über Vollbild-Apps sichtbar. Ist die Einstellung aus, gehört das Fenster zu genau einem Schreibtisch. Das ist der, auf dem es nach dem Start erschienen ist oder auf dem man die Einstellung abgeschaltet hat. Das gilt auch, solange es ausgeblendet ist. Kurzbefehl und Menüleiste wechseln beim Öffnen auf diesen Schreibtisch. Auf einen anderen Schreibtisch kommt das Fenster, indem man dort die Einstellung ein- und wieder ausschaltet. Die installierte App ist mit `LSUIElement` als Menüleisten-App markiert. Sie blendet sich beim Wechsel zur anderen App nicht selbst aus.
+
+Öffnen und ein Klick ins Fenster aktivieren die App. Blendet man das fokussierte Fenster aus, blendet `app.hide()` auch die App aus. So bekommt die vorher benutzte App die Tastatur zurück. Wechselt das Öffnen auf einen anderen Schreibtisch, aktiviert macOS danach die vorderste App dort. Meldet `NSWorkspaceActiveSpaceDidChangeNotification` den Wechsel innerhalb einer Sekunde nach dem Öffnen, zeigt die App das Fenster deshalb noch einmal und holt sich den Fokus zurück.
 
 Das Fenster nutzt `titleBarStyle: "hidden"`. macOS zeichnet nur die Ampelknöpfe bei `{ x: 14, y: 13 }`, die Titelleiste darum zeichnet der Renderer. Minimieren, Zoomen und Vollbild sind abgeschaltet, denn ohne Dock-Symbol wäre ein minimiertes Fenster nicht mehr zu finden. Der Hintergrund ist `#000000` ohne Vibrancy. `nativeTheme.themeSource` steht auf `dark`, damit Ampelknöpfe und Menüs dazu passen. Das Fenster ist anfangs 410 × 600 Pixel groß, mindestens 340 × 360 und höchstens 900 breit.
 
@@ -309,9 +311,10 @@ Build und Tests ersetzen nicht die Prüfung auf einem echten Mac mit eingerichte
 
 - [Shoo](https://shoo.dev): Authorization Code mit PKCE, `client_id` aus der Origin der Redirect-URI.
 - [Raycast Notes](https://manual.raycast.com/notes): Ein-Fenster-Bedienung, Checkboxen, Tastaturbefehle und Panels mit Suchfeld.
-- [Electron-Fensteroptionen](https://www.electronjs.org/docs/latest/api/structures/base-window-options): Panel, Titelleiste mit Ampelknöpfen und Fensterverhalten.
+- [Electron-Fensteroptionen](https://www.electronjs.org/docs/latest/api/structures/base-window-options): Titelleiste mit Ampelknöpfen und Fensterverhalten.
 - [Electron BrowserWindow](https://www.electronjs.org/docs/latest/api/browser-window): Vordergrund, Schreibtische und Vollbild.
-- [Electron app](https://www.electronjs.org/docs/latest/api/app): `showEmojiPanel` für die Emoji-Auswahl von macOS.
+- [Electron app](https://www.electronjs.org/docs/latest/api/app): `showEmojiPanel` für die Emoji-Auswahl von macOS, `hide` für die Rückgabe des Fokus.
+- [Electron systemPreferences](https://www.electronjs.org/docs/latest/api/system-preferences): `subscribeWorkspaceNotification` für den Wechsel des Schreibtischs.
 - [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage): macOS-Schlüsselbund und verschlüsselte Geheimnisse.
 - [Electron-Sicherheit](https://www.electronjs.org/docs/latest/tutorial/security): Renderer-Sandbox und IPC-Grenzen.
 
