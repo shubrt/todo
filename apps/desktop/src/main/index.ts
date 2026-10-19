@@ -10,6 +10,7 @@ import {
   safeStorage,
   screen,
   shell,
+  systemPreferences,
   Tray,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -71,6 +72,9 @@ let store: ConnectionStore;
 let stateError: string | undefined;
 let quitting = false;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+// When showWindow last ran, so a desktop switch caused by showing can focus the window again.
+// hideWindow resets it.
+let shownAt = 0;
 const shooLogin = new ShooLogin((url) => shell.openExternal(url));
 
 app.setName(appName);
@@ -174,7 +178,9 @@ async function start() {
     minWidth: minimumSize.width,
     minHeight: minimumSize.height,
     maxWidth: 900,
-    type: process.platform === "darwin" ? "panel" : undefined,
+    // A normal window, not type "panel": Electron's NSPanel forces it onto all Spaces, which
+    // would make the "allSpaces" preference a no-op. Unlike a panel it activates todo when
+    // shown, see hideWindow and refocusAfterSpaceSwitch.
     title: appName,
     // Native traffic lights inside the renderer's 40px title bar, which is the drag region.
     // Only close stays enabled (it hides): without a Dock tile a minimized window is lost.
@@ -219,7 +225,7 @@ async function start() {
   mainWindow.on("close", (event) => {
     if (!quitting) {
       event.preventDefault();
-      mainWindow.hide();
+      hideWindow();
     }
   });
   mainWindow.on("move", queueWindowSave);
@@ -248,6 +254,11 @@ async function start() {
   tray.setTitle(variant ? `✓ ${variant}` : "✓");
   tray.setToolTip(`${appName} · Deine Aufgaben im Blick`);
   tray.on("click", toggleWindow);
+  if (process.platform === "darwin")
+    systemPreferences.subscribeWorkspaceNotification(
+      "NSWorkspaceActiveSpaceDidChangeNotification",
+      refocusAfterSpaceSwitch,
+    );
   updateMenu();
   registerIpc();
   if (developmentUrl) await mainWindow.loadURL(developmentUrl);
@@ -390,7 +401,7 @@ function registerIpc() {
       throw cause;
     }
   });
-  handle("desktop:hide", () => window?.hide());
+  handle("desktop:hide", hideWindow);
   // The picked emoji is typed into the focused field of the window.
   handle("desktop:emoji-panel", () => app.showEmojiPanel());
 }
@@ -414,12 +425,33 @@ function applyWindowPreferences() {
 
 function showWindow() {
   if (window) {
+    shownAt = Date.now();
+    // Undo app.hide() from hideWindow first, otherwise the window shows without becoming key.
+    if (process.platform === "darwin") app.show();
     window.show();
     window.focus();
   }
 }
+// Showing a window that sits on another desktop switches there, and macOS then activates the
+// frontmost app of that desktop. Showing once more after the switch takes activation back
+// (focus() alone would not steal it).
+function refocusAfterSpaceSwitch() {
+  if (window && Date.now() - shownAt < 1000) {
+    shownAt = 0;
+    window.show();
+  }
+}
+// Showing activates todo, so hiding a focused window also hides the app on macOS. That hands
+// keyboard focus back to the app used before instead of leaving todo active without a window.
+function hideWindow() {
+  if (!window) return;
+  shownAt = 0;
+  const focused = window.isFocused();
+  window.hide();
+  if (process.platform === "darwin" && focused) app.hide();
+}
 function toggleWindow() {
-  if (window?.isVisible() && window.isFocused()) window.hide();
+  if (window?.isVisible() && window.isFocused()) hideWindow();
   else showWindow();
 }
 function navigate(target: DesktopNavigation) {
@@ -462,7 +494,7 @@ function updateMenu() {
         accelerator: "CommandOrControl+,",
         click: () => navigate("settings"),
       },
-      { label: "Fenster ausblenden", click: () => window?.hide() },
+      { label: "Fenster ausblenden", click: hideWindow },
       { label: "Beenden", accelerator: "CommandOrControl+Q", click: () => app.quit() },
     ]),
   );
