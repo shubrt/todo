@@ -18,8 +18,8 @@ ein Projekt ist eine eigene Liste.
 Eine normale Liste hat die Abschnitte Tasks und Backlog. Für später sammelt
 die Hauptaufgaben beider Abschnitte, die für einen späteren Tag eingeplant
 oder zurückgestellt sind. Der Abschnitt erscheint nur, solange es solche
-Aufgaben gibt. Zur Wiedervorlage kommt die Aufgabe oben in Tasks zurück, auch
-wenn sie vorher im Backlog lag.
+Aufgaben gibt. Zur Wiedervorlage kommt die Aufgabe oben in ihren Block in
+Tasks zurück, auch wenn sie vorher im Backlog lag.
 
 Wichtig, Verlauf und Wiederholungen sind feste Listen. Sie zeigen Einträge
 aus allen Listen und nehmen selbst keine Aufgaben auf. Sie lassen sich wie
@@ -40,12 +40,20 @@ Liste zum Zeitpunkt der Erledigung.
 
 ## Aufgaben
 
-Neue Aufgaben landen oben bei der offenen Arbeit im Abschnitt Tasks, unter
-den heute erledigten. Über die API erfasste Aufgaben tragen standardmäßig eine
-Inbox-Markierung, in der App angelegte nicht. Die App entfernt die Markierung,
-sobald der Nutzer die Zeile auswählt. Das Entfernen verändert die Position
-nicht. Verschieben setzt eine Aufgabe oben in den Abschnitt Tasks der
-Zielliste und nimmt ihre Subtasks mit.
+Jeder Abschnitt zeigt oben die heute erledigten Aufgaben, darunter die offenen
+mit hoher Priorität (‼️) und dann die übrigen offenen, jeweils in manueller
+Reihenfolge. Sortieren verschiebt eine Aufgabe nur innerhalb ihres Blocks.
+Eine Aufgabe, die neu angelegt, verschoben, wieder geöffnet oder wiedervorgelegt
+wird, landet oben in ihrem Block. Ohne hohe Priorität steht sie dann unter
+denen mit hoher Priorität.
+
+Neue Aufgaben landen im Abschnitt Tasks. In der App angelegte stehen damit
+direkt unter den heute erledigten und den wichtigen. Über die API erfasste
+Aufgaben tragen standardmäßig eine Inbox-Markierung, in der App angelegte
+nicht. Die App entfernt die Markierung, sobald der Nutzer die Zeile auswählt.
+Das Entfernen verändert die Position nicht. Verschieben setzt eine Aufgabe
+oben in ihren Block im Abschnitt Tasks der Zielliste und nimmt ihre Subtasks
+mit.
 
 Aufgaben haben höchstens eine Ebene von Subtasks. Subtasks erben Liste und
 Abschnitt vom Haupttask. Sie haben eigene Titel, Reihenfolge,
@@ -71,10 +79,10 @@ enthalten. Diese erhalten keinen erfundenen Abschluss und verschwinden beim
 Archivieren des Parents aus der Arbeitsansicht.
 
 Wieder öffnen geht nur am lokalen Tag der Erledigung, auch für Habits und
-Subtasks. Die Aufgabe ist danach wieder offen und steht oben bei der offenen
-Arbeit. Ihr Erledigungsnachweis wird gelöscht, weil die Arbeit doch nicht
-getan ist. Nach dem nächtlichen Aufräumen ist die Aufgabe archiviert und
-lässt sich nicht mehr öffnen.
+Subtasks. Die Aufgabe ist danach wieder offen und steht oben in ihrem Block
+bei der offenen Arbeit. Ihr Erledigungsnachweis wird gelöscht, weil die
+Arbeit doch nicht getan ist. Nach dem nächtlichen Aufräumen ist die Aufgabe
+archiviert und lässt sich nicht mehr öffnen.
 
 ## Termine und Wichtig
 
@@ -86,7 +94,7 @@ Priorität, ohne eine Erledigung zu erzeugen. Ein gesetzter Snooze bleibt
 bestehen. Gesnoozte Aufgaben mit manueller hoher Priorität erscheinen erst zur
 Wiedervorlage wieder in Wichtig. Eine bereits fällige verbindliche Frist
 bleibt auch während eines Snooze sichtbar. Wiedervorlagen sortieren einmalig
-oben ein, danach gilt wieder die manuelle Reihenfolge.
+oben in ihren Block ein, danach gilt wieder die manuelle Reihenfolge.
 
 Endet ein Snooze, trägt die Aufgabe einen Wecker, bis der Nutzer sie auswählt.
 Wie bei der Inbox-Markierung zählt die automatische Auswahl beim Öffnen einer

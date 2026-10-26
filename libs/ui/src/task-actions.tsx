@@ -4,7 +4,7 @@ import type { OptimisticLocalStore } from "convex/browser";
 import { useMutation } from "convex/react";
 import type { FunctionArgs } from "convex/server";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { useWrite, type List, type Task } from "./data";
+import { orderBlock, useWrite, type List, type Task } from "./data";
 import { findTask, useApp, type TaskItem } from "./store";
 
 /**
@@ -35,7 +35,7 @@ export function abilities({ task, subtasks, parent, sortable }: TaskItem) {
 
 /**
  * Optimistic tasks.reorder: in every loaded list that shows all the named tasks, they take
- * each other's places in the new order. The others stay put, and so does done before open.
+ * each other's places in the new order. The others stay put, and so do the blocks (orderBlock).
  */
 function showOrder(
   store: OptimisticLocalStore,
@@ -94,7 +94,7 @@ function useActionsValue() {
       const group = item.siblings.filter(
         (sibling) => task.parentId !== undefined || sibling.section === task.section,
       );
-      const isPeer = (sibling: Task) => sibling.state === task.state;
+      const isPeer = (sibling: Task) => orderBlock(sibling) === orderBlock(task);
       const peers = group.filter(isPeer);
       const from = peers.findIndex((sibling) => sibling._id === taskId);
       const to = Math.max(0, Math.min(peers.length - 1, from + steps));
@@ -187,9 +187,9 @@ function useActionsValue() {
       },
       outdent: (task: Task) => write(task._id, () => outdent({ taskId: task._id })),
       /**
-       * Moves the task `steps` places among its peers of the same state (open or done) and
-       * saves the whole group order; in Habits that order also becomes the order of the coming
-       * days. ⌥↑/⌥↓ move one place and wait for the server.
+       * Moves the task `steps` places among its peers of the same block (done, ‼️ or open, see
+       * orderBlock) and saves the whole group order; in Habits that order also becomes the order
+       * of the coming days. ⌥↑/⌥↓ move one place and wait for the server.
        */
       reorder: (taskId: Id<"tasks">, steps: number) => {
         const order = orderAfter(taskId, steps);

@@ -1,6 +1,6 @@
 import { useQuery } from "convex/react";
 import { Fragment, useMemo } from "react";
-import { useDay, type List, type Task } from "../data";
+import { orderBlock, useDay, type List, type Task } from "../data";
 import {
   EditRow,
   EmptyLine,
@@ -18,8 +18,8 @@ const sectionLabels = { active: "Tasks", backlog: "Backlog", later: "Für späte
 
 /**
  * A normal list: Tasks (open by default), Backlog and, while something is planned or snoozed,
- * Für später. Each section remembers whether it is open. Today's done tasks lead Tasks and the
- * ⌘N editor sits right under them.
+ * Für später. Each section remembers whether it is open. Tasks shows today's done tasks, the
+ * open ‼️ ones, then the ⌘N editor, where a new task lands, and the other open ones.
  */
 export function ListView({ list }: { list: List }) {
   const queries = viewQueries.tasks(list._id);
@@ -81,8 +81,9 @@ export function ListView({ list }: { list: List }) {
           (group.key === "active" ? (
             <>
               {tree(group.roots.filter((task) => task.state === "done"))}
+              {tree(open.filter((task) => orderBlock(task) === "important"))}
               {creating && <EditRow color={list.color} target={{ list }} />}
-              {tree(open)}
+              {tree(open.filter((task) => orderBlock(task) === "open"))}
               {!open.length && !creating && (
                 <EmptyLine>
                   Nichts offen.

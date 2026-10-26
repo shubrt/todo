@@ -183,14 +183,34 @@ describe("capture, hierarchy and manual ordering", () => {
     ]);
   });
 
+  it("shows today's done, then open ‼️, then the other open tasks and creates under the ‼️ ones", async () => {
+    const { user, me } = await setup();
+    const create = (title: string, extra = {}) =>
+      user.mutation(api.tasks.create, { title, listId: me, ...extra });
+    const old = await create("Old");
+    await create("Urgent", { highPriority: true });
+    const finished = await create("Finished", { highPriority: true });
+    await user.mutation(api.tasks.complete, { taskId: finished });
+    const fresh = await create("Fresh");
+    const titles = async () =>
+      (await user.query(api.tasks.list, { view: "list", listId: me })).map((task) => task.title);
+    expect(await titles()).toEqual(["Finished", "Urgent", "Fresh", "Old"]);
+    // Marking keeps the manual order within each block, and no order lifts a task above ‼️.
+    await user.mutation(api.tasks.update, { taskId: old, highPriority: true });
+    expect(await titles()).toEqual(["Finished", "Urgent", "Old", "Fresh"]);
+    await user.mutation(api.tasks.reorder, { taskIds: [fresh] });
+    expect(await titles()).toEqual(["Finished", "Urgent", "Old", "Fresh"]);
+  });
+
   it("indents a root under the nearest open root above it and outdents it right after its parent", async () => {
     const { t, user, me } = await setup();
     const create = (title: string, extra = {}) =>
       user.mutation(api.tasks.create, { title, listId: me, ...extra });
     await create("D");
-    await create("C");
+    // ‼️ like B, so B shares their block and its outdented place after A is visible.
+    await create("C", { highPriority: true });
     const b = await create("B", { highPriority: true, dueOn: "2026-09-06" });
-    const a = await create("A");
+    const a = await create("A", { highPriority: true });
     const roots = async () =>
       (await user.query(api.tasks.list, { view: "list", listId: me }))
         .filter((task) => !task.parentId)
@@ -731,6 +751,9 @@ describe("calendar planning, snooze and recurrence processing", () => {
     const today = () => user.query(api.tasks.list, { view: "list", listId: habits });
     const titles = async () => (await today()).map((task) => task.title);
     const id = async (title: string) => (await today()).find((task) => task.title === title)!._id;
+    // Habits ignore ‼️ (the API accepts it), so the manual order stays one block.
+    await user.mutation(api.tasks.update, { taskId: await id("C"), highPriority: true });
+    expect(await titles()).toEqual(["E", "D", "C", "B", "A"]);
     await user.mutation(api.tasks.complete, { taskId: await id("B") });
     await user.mutation(api.tasks.complete, { taskId: await id("A") });
     // Done habits sort first and keep their manual order among themselves.

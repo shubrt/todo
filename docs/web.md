@@ -66,7 +66,7 @@ Die Oberfläche gleicht der am Mac, siehe [Bedienung](desktop.md#bedienung). Auf
 - Die Titelleiste ist 40 Punkt hoch, sitzt unter der Statusleiste und hat keine Ampelknöpfe. Ein Tipp auf den Titel mit dem kleinen Pfeil öffnet die Listensuche, die am Mac `⌘P` öffnet.
 - Der Statuspunkt hat keinen Hover. Ein Tipp zeigt seine Blase zwei Sekunden lang.
 - Die Seitenleiste ist 48 Punkt breit. Die Favoriten stehen oben im Abstand von 44 Punkt, unten sitzt das Zahnrad der Einstellungen.
-- Unten rechts schwebt über der Liste ein weißer runder Knopf mit schwarzem `+`, 56 Punkt groß und 16 Punkt vom Rand und vom Home-Indikator entfernt. Er legt wie `⌘N` eine Aufgabe oben in Tasks der offenen Liste an, in Habits einen Habit. Aus Wichtig, Verlauf und Wiederholungen wechselt er vorher in die Standardliste. Die Tastatur öffnet sich sofort, auch wenn die Standardliste noch lädt.
+- Unten rechts schwebt über der Liste ein weißer runder Knopf mit schwarzem `+`, 56 Punkt groß und 16 Punkt vom Rand und vom Home-Indikator entfernt. Er legt wie `⌘N` eine Aufgabe in Tasks der offenen Liste an, unter den wichtigen, in Habits einen Habit. Aus Wichtig, Verlauf und Wiederholungen wechselt er vorher in die Standardliste. Die Tastatur öffnet sich sofort, auch wenn die Standardliste noch lädt.
 - Während einer Bearbeitung und bei offener Schublade fehlt der Knopf. Unter der letzten Zeile bleibt so viel Platz, dass sie sich über den Knopf hinaus scrollen lässt.
 - Zeilen sind 36 Punkt hoch. Die Checkbox bleibt 14 Punkt groß, ihre Trefferfläche ist 44 Punkt breit und so hoch wie die Zeile.
 - Beim Öffnen einer Liste ist nichts ausgewählt. Die Auswahl ist nur zu sehen, solange eine Schublade oder eine Bearbeitung offen ist.
@@ -118,7 +118,7 @@ Den Klick, den iOS nach dem Loslassen schicken kann, verwirft die App. Er starte
 Für das Ziehen gelten dieselben Grenzen wie für `⌥↑` und `⌥↓`:
 
 - Hauptaufgaben bleiben in ihrem Abschnitt. Nach Backlog und zurück geht es über die Schublade.
-- Offene bleiben bei offenen, heute erledigte bei erledigten.
+- Heute erledigte bleiben bei erledigten, wichtige mit ‼️ bei wichtigen und die übrigen offenen unter sich.
 - Subtasks bleiben bei ihrer Hauptaufgabe. Aufgeklappte Subtasks wandern mit ihrer Hauptaufgabe.
 - In Für später tauschen nur benachbarte Zeilen desselben Abschnitts.
 - In Habits gilt die neue Reihenfolge auch für die folgenden Tage.

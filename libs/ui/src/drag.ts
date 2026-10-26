@@ -1,6 +1,6 @@
 import type { Id } from "@todo/backend/dataModel";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { Task } from "./data";
+import { orderBlock, type Task } from "./data";
 import { findTask, useApp, type TaskItem } from "./store";
 import type { TaskActions } from "./task-actions";
 import { gesture, leaveField, longPress, outside, type Press } from "./touch";
@@ -11,16 +11,19 @@ const edge = 48;
 const speed = 0.8;
 
 /**
- * The rows a task can be dragged among: the unbroken run around it of rows with its state and
- * section. Roots stay in their section, subtasks under their parent, open rows among open ones
- * and today's done among done, as with ⌥↑/⌥↓. Für später mixes sections, so its runs may be
- * short. Empty where the view shows only part of a list (Wichtig).
+ * The rows a task can be dragged among: the unbroken run around it of rows with its block
+ * (orderBlock) and section. Roots stay in their section, subtasks under their parent, today's
+ * done among done, ‼️ among ‼️ and the other open rows among themselves, as with ⌥↑/⌥↓. Für
+ * später mixes sections, so its runs may be short. Empty where the view shows only part of a
+ * list (Wichtig).
  */
 export function dragRun({ task, siblings, sortable }: TaskItem) {
   const index = siblings.findIndex((sibling) => sibling._id === task._id);
   if (!sortable || index < 0) return [];
   const peer = (sibling: Task | undefined) =>
-    sibling?.state === task.state && sibling.section === task.section;
+    sibling !== undefined &&
+    orderBlock(sibling) === orderBlock(task) &&
+    sibling.section === task.section;
   let start = index;
   let end = index + 1;
   while (peer(siblings[start - 1])) start--;
@@ -119,11 +122,11 @@ function lift(
 
   const layout = () => {
     const dy = Math.max(up, Math.min(down, y - y0 + list.scrollTop - scroll0));
-    const center = middles[from]! + dy;
-    // It takes a neighbor's place once its center passes the neighbor's middle.
+    // It takes a neighbor's place once its leading edge passes the neighbor's middle. Its center
+    // would stop on the middle of the run's last (or first) block, never taking that place.
     to = from;
-    while (center > (middles[to + 1] ?? Infinity)) to++;
-    while (center < (middles[to - 1] ?? -Infinity)) to--;
+    if (dy > 0) while (lifted.bottom + dy > (middles[to + 1] ?? Infinity)) to++;
+    else while (lifted.top + dy < (middles[to - 1] ?? -Infinity)) to--;
     blocks.forEach((block, index) => {
       const shift =
         index === from

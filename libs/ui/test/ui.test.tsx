@@ -301,7 +301,7 @@ function fixtures() {
       list(listIds.recurrences, "Wiederholungen", "recurrences", { emoji: "🗓️" }),
       list(listIds.urlaub, "Urlaub", "tasks", { color: "#ffd60a" }),
     ],
-    // Display order of the backend: done first, then position.
+    // Display order of the backend: done first, then open ‼️, then the rest, each by position.
     tasks: [
       task("servoy", "Servoy API Scripts", listIds.work, done),
       task("umbau", "Umbau auf Todo App", listIds.work, { highPriority: true }),
@@ -1277,10 +1277,10 @@ describe("Normale Liste", () => {
     expect(rowOf("Sport")?.querySelector(".wk")?.getAttribute("aria-label")).toBe("5 von 6 Tagen");
   });
 
-  it("legt mit ⌘N unter dem Erledigten an, ohne Inbox, und behält bei Fehlern den Entwurf", async () => {
+  it("legt mit ⌘N unter den wichtigen Aufgaben an, ohne Inbox, und behält bei Fehlern den Entwurf", async () => {
     await render();
     await press("mod+n");
-    expect($(".row.done + .row.edit")).not.toBeNull();
+    expect($("[data-task='umbau'] + .row.edit + [data-task='reise']")).not.toBeNull();
     expect((document.activeElement as HTMLInputElement).placeholder).toBe("Neue Aufgabe");
     await type("Angebot schreiben");
     await press("enter");
@@ -2256,68 +2256,82 @@ describe("Touch", () => {
       });
     onTestFinished(() => rects.mockRestore());
     await render();
-    const umbau = rowOf("Umbau auf Todo App");
+    const reise = rowOf("Reise DB");
     // Without the hold the finger scrolls, and a cancel puts a lifted row back.
-    await finger("pointerdown", umbau, 104);
-    await finger("pointermove", umbau, 184);
+    await finger("pointerdown", reise, 140);
+    await finger("pointermove", reise, 220);
     await wait();
-    await finger("pointerup", umbau, 184);
-    await finger("pointerdown", umbau, 104);
+    await finger("pointerup", reise, 220);
+    await finger("pointerdown", reise, 140);
     await wait();
-    await finger("pointermove", umbau, 184);
-    await finger("pointercancel", umbau, 184);
-    expect(umbau?.style.transform).toBe("");
+    await finger("pointermove", reise, 220);
+    await finger("pointercancel", reise, 220);
+    expect(reise?.style.transform).toBe("");
     expect(mutation("tasks:reorder")).not.toHaveBeenCalled();
 
-    // Two rows down: it follows the finger and the rows it passed move up.
+    // The ‼️ row above has no peers among the other open rows, so it goes back.
+    const umbau = rowOf("Umbau auf Todo App");
     await finger("pointerdown", umbau, 104);
     await wait();
     await finger("pointermove", umbau, 184);
+    expect(umbau?.style.transform).toBe("");
+    await finger("pointerup", umbau, 184);
+    expect(mutation("tasks:reorder")).not.toHaveBeenCalled();
+
+    // To the end of its run: it follows the finger and the rows it passed move up.
+    await finger("pointerdown", reise, 140);
+    await wait();
+    await finger("pointermove", reise, 220);
     expect($(".list")?.dataset.dragging).toBe("");
     expect(
       ["Umbau auf Todo App", "Reise DB", "Neo Basis", "Release prüfen"].map(
         (text) => rowOf(text)?.style.transform,
       ),
-    ).toEqual(["translateY(80px)", "translateY(-36px)", "translateY(-36px)", ""]);
+    ).toEqual(["", "translateY(72px)", "translateY(-36px)", "translateY(-36px)"]);
     // Shown at once, and the release opens no sheet and edits nothing.
-    await finger("pointerup", umbau, 184);
-    await click(umbau?.querySelector(".t"));
+    await finger("pointerup", reise, 220);
+    await click(reise?.querySelector(".t"));
     expect(mutation("tasks:reorder")).toHaveBeenCalledExactlyOnceWith({
-      taskIds: ["servoy", "reise", "neo", "umbau", "release"],
+      taskIds: ["servoy", "umbau", "neo", "release", "reise"],
       listId: "l-work",
       section: "active",
     });
     expect(texts(".row .t")).toEqual([
       "Servoy API Scripts",
-      "Reise DB",
-      "Neo Basis",
       "Umbau auf Todo App",
+      "Neo Basis",
       "Release prüfen",
+      "Reise DB",
     ]);
     expect(app().panels).toEqual([]);
     expect(app().editing).toBeNull();
     expect($(".list")?.dataset.dragging).toBeUndefined();
-    expect(umbau?.style.transform).toBe("");
+    expect(reise?.style.transform).toBe("");
 
-    // A live update that changes the run meanwhile (Reise DB done elsewhere) sends the row back
-    // unsaved.
+    // A live update that changes the run meanwhile (Release prüfen done elsewhere) sends the
+    // row back unsaved.
     await run(() => backend.change());
-    await finger("pointerdown", umbau, 104);
+    await finger("pointerdown", reise, 140);
     await wait();
-    await finger("pointermove", umbau, 184);
-    await run(() => backend.change(() => Object.assign(data.tasks[2]!, done)));
-    await finger("pointerup", umbau, 184);
-    await click(umbau?.querySelector(".t"));
+    await finger("pointermove", reise, 220);
+    const release = data.tasks.find((task) => task._id === "release")!;
+    await run(() => backend.change(() => Object.assign(release, done)));
+    await finger("pointerup", reise, 220);
+    await click(reise?.querySelector(".t"));
     expect(mutation("tasks:reorder")).toHaveBeenCalledTimes(1);
   });
 
   it("tauscht auf dem Mac mit ⌥↓ wie bisher und wartet auf den Server", async () => {
     Reflect.deleteProperty(navigator, "maxTouchPoints");
     await render();
+    // The ‼️ row stays above the other open rows.
     await run(() => app().select("umbau"));
     await press("alt+down");
-    expect(mutation("tasks:reorder")).toHaveBeenCalledWith({
-      taskIds: ["servoy", "reise", "umbau", "neo", "release"],
+    expect(mutation("tasks:reorder")).not.toHaveBeenCalled();
+    await run(() => app().select("reise"));
+    await press("alt+down");
+    expect(mutation("tasks:reorder")).toHaveBeenCalledExactlyOnceWith({
+      taskIds: ["servoy", "umbau", "neo", "reise", "release"],
       listId: "l-work",
       section: "active",
     });

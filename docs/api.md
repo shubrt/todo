@@ -105,14 +105,15 @@ gemeinsamer Kontext geliefert.
 
 Neue Aufgaben ohne `listId` landen in der Standardliste, die in der App unter
 Einstellungen > Konto steht. Sie sind standardmäßig Inbox-Aufgaben und stehen
-oben bei der offenen Arbeit im Abschnitt Tasks. Zeigt `listId` auf eine Liste
+oben bei der offenen Arbeit im Abschnitt Tasks, ohne `highPriority` unter den
+Aufgaben mit hoher Priorität. Zeigt `listId` auf eine Liste
 einer anderen Art als `tasks`, antwortet die API mit `400 INVALID_INPUT`. Eine
 bereits fällige Frist aktiviert eine Aufgabe auch dann, wenn beim Anlegen
 `backlog` angegeben wurde. Habits entstehen nur in der App. Wiederkehrende
 Aufgaben lassen sich derzeit weder über die API noch in der App anlegen.
 
-`move` setzt eine Hauptaufgabe samt Subtasks oben in den offenen Block des
-Ziels. Ohne `listId` bleibt die Liste, ohne `section` der Abschnitt. Subtasks
+`move` setzt eine Hauptaufgabe samt Subtasks oben in ihren Block im Ziel,
+ohne `highPriority` unter die Aufgaben mit hoher Priorität. Ohne `listId` bleibt die Liste, ohne `section` der Abschnitt. Subtasks
 und Habits wechseln die Liste nicht.
 
 `GET /tasks` liefert Haupttasks mit ihren Subtasks. `limit` zählt Haupttasks,
@@ -135,9 +136,10 @@ Schreibantworten enthalten `data.id`, bei reinen Sortieroperationen `null`.
 Eigene Priorität oder eine dritte Ebene für Subtasks weist der Server ab.
 
 Eine Sortierung kann eine Teilmenge nennen. Die genannten Einträge werden in
-dieser Reihenfolge vor die übrigen Geschwister gesetzt. Erledigte Einträge bleiben
-im oberen Block; innerhalb des erledigten und des offenen Blocks gilt die
-manuelle Reihenfolge. Alle IDs müssen zu derselben Liste und demselben
+dieser Reihenfolge vor die übrigen Geschwister gesetzt. Die Anzeige hat drei
+Blöcke: heute erledigte, offene mit `highPriority` und die übrigen offenen.
+Eine Sortierung verschiebt nichts über diese Grenzen, innerhalb jedes Blocks
+gilt die manuelle Reihenfolge. Alle IDs müssen zu derselben Liste und demselben
 Abschnitt beziehungsweise zum angegebenen Parent gehören.
 
 Eine organisatorisch geplante oder gesnoozte Aufgabe ist bis zur Wiedervorlage
@@ -152,9 +154,9 @@ ausgewählt wird. Jeder Aufruf von `snooze` entfernt das Feld, auch mit `null`.
 `clear-inbox` ändert daran nichts.
 
 `reopen` öffnet eine Aufgabe wieder, die am heutigen lokalen Tag erledigt
-wurde. Der Server löscht ihren Erledigungseintrag und setzt sie oben in den
-offenen Block. Ab dem nächsten Tag ist sie archiviert, dann antwortet `reopen`
-mit `409 CONFLICT`. Bei einer offenen Aufgabe ändert `reopen` nichts. Wer die
+wurde. Der Server löscht ihren Erledigungseintrag und setzt sie oben in ihren
+Block, ohne `highPriority` unter die Aufgaben mit hoher Priorität. Ab dem
+nächsten Tag ist sie archiviert, dann antwortet `reopen` mit `409 CONFLICT`. Bei einer offenen Aufgabe ändert `reopen` nichts. Wer die
 Aufgabe danach erneut erledigt, braucht einen neuen `Idempotency-Key`. Der alte
 liefert nur die gespeicherte Quittung und erledigt nichts.
 

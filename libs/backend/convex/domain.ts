@@ -204,18 +204,26 @@ function groupKey(task: Pick<Task, "parentId" | "listId" | "section">) {
     ? `parent:${task.parentId}`
     : `list:${task.listId}:${task.section ?? "active"}`;
 }
+/**
+ * Display order within a group, in blocks: today's done rows, then open tasks marked Wichtig
+ * (‼️, `highPriority`), then the other open rows. Each block keeps its manual order. Habits
+ * ignore the flag (the API accepts it), so their manual order stays one block.
+ */
 function comparePosition(a: Task, b: Task) {
   return (
-    Number(b.state === "done") - Number(a.state === "done") ||
+    orderBlock(a) - orderBlock(b) ||
     a.position - b.position ||
     a.createdAt - b.createdAt ||
     a._id.localeCompare(b._id)
   );
 }
+const orderBlock = (task: Task) =>
+  task.state === "done" ? 0 : task.highPriority && task.kind === "task" ? 1 : 2;
 
 /**
- * Position at the top of the group's open block, right under today's done items. Habits use
- * their manual order (`recurrence.position`) instead.
+ * Position at the top of the task's block (see comparePosition): under today's done items, and
+ * without ‼️ also under the ‼️ ones. Habits use their manual order (`recurrence.position`)
+ * instead.
  */
 async function topPosition(
   ctx: ReadCtx,
@@ -554,7 +562,7 @@ async function lastChildPosition(ctx: ReadCtx, ownerId: string, parentId: Id<"ta
 }
 
 /**
- * Reopens a task completed today: deletes its completion, puts it on top of the open block
+ * Reopens a task completed today: deletes its completion, puts it on top of its open block
  * and restores its schedule. Earlier days are archived history and stay closed. A habit
  * returns to its manual place; when it is paused or removed, its open instance is hidden as
  * pausing does, so it never outlives the day.
