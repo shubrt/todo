@@ -23,6 +23,12 @@ export type Task = FunctionReturnType<typeof api.tasks.list>[number];
 export type Recurrence = FunctionReturnType<typeof api.recurrences.list>[number];
 export type Completion = FunctionReturnType<typeof api.completions.list>["items"][number];
 export type Settings = FunctionReturnType<typeof api.settings.get>;
+/**
+ * A row's block in the backend's display order: today's done rows, then open tasks marked
+ * Wichtig (‼️, never habits), then the other open rows. Rows move only within their block.
+ */
+export const orderBlock = (task: Task) =>
+  task.state === "done" ? "done" : task.highPriority && task.kind === "task" ? "important" : "open";
 /** The owner's day for date labels: `today` is the local date in the account time zone. */
 export type Day = { today: string; timeZone: string };
 

@@ -65,7 +65,7 @@ export const update = mutation({
   handler: async (ctx, { taskId, ...input }) =>
     executeCommand(ctx, await requireOwner(ctx), { type: "update", taskId, input }),
 });
-/** Moves a root (its subtasks follow) to the top of another list and/or section. */
+/** Moves a root (its subtasks follow) to the top of its block in another list and/or section. */
 export const move = mutation({
   args: { taskId: v.id("tasks"), listId: v.optional(v.id("lists")), section: v.optional(section) },
   handler: async (ctx, args) =>

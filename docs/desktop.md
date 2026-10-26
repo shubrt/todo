@@ -144,7 +144,7 @@ Das Menüleistenmenü öffnet Wichtig, Verlauf, Wiederholungen und mit "Listen �
 
 ### Listen
 
-Eine normale Liste hat die Abschnitte Tasks, Backlog und Für später. Tasks ist anfangs offen, Backlog und Für später sind zugeklappt. Für später erscheint nur, solange eine Aufgabe der Liste für einen späteren Tag eingeplant oder zurückgestellt ist. Jeder Abschnittskopf zeigt die Zahl der offenen Hauptaufgaben. Ein Klick auf den Kopf oder `→` und `←` auf dem ausgewählten Kopf klappen ihn auf und zu. Welche Abschnitte offen sind, merkt sich die App je Liste auf diesem Mac. In Tasks stehen oben die heute erledigten Aufgaben, darunter die offenen in manueller Reihenfolge. Ist nichts offen, steht dort "Nichts offen. ⌘N legt eine Aufgabe an."
+Eine normale Liste hat die Abschnitte Tasks, Backlog und Für später. Tasks ist anfangs offen, Backlog und Für später sind zugeklappt. Für später erscheint nur, solange eine Aufgabe der Liste für einen späteren Tag eingeplant oder zurückgestellt ist. Jeder Abschnittskopf zeigt die Zahl der offenen Hauptaufgaben. Ein Klick auf den Kopf oder `→` und `←` auf dem ausgewählten Kopf klappen ihn auf und zu. Welche Abschnitte offen sind, merkt sich die App je Liste auf diesem Mac. In Tasks stehen oben die heute erledigten Aufgaben, darunter die wichtigen mit ‼️ und dann die übrigen offenen, jeweils in manueller Reihenfolge. Backlog und Für später stellen die wichtigen ebenso voran. `⌥↑` und `⌥↓` verschieben nur innerhalb dieser Blöcke. Ist nichts offen, steht dort "Nichts offen. ⌘N legt eine Aufgabe an."
 
 Die festen Listen zeigen Einträge aus allen Listen:
 
@@ -186,13 +186,13 @@ Beim Öffnen einer Liste ist die oberste Aufgabe markiert, in einer leeren Liste
 
 Ein blauer Punkt am linken Rand markiert eine Aufgabe aus der Inbox, also eine über die API erfasste. Sobald die Zeile mit Tastatur oder Maus ausgewählt wird, entfernt die App die Markierung im Backend. Die automatische Markierung beim Öffnen einer Liste zählt dabei nicht. Die Position bleibt dabei gleich. Ohne Verbindung bleibt der Punkt, bis die Zeile wieder ausgewählt wird.
 
-Endet ein Snooze, holt das Backend die Aufgabe oben in Tasks zurück, und an der Stelle der Uhr steht ein gelber Wecker. Er verschwindet wie der Inbox-Punkt, sobald die Zeile mit Tastatur oder Maus ausgewählt wird, und zwar auf allen Geräten. Die automatische Markierung beim Öffnen einer Liste zählt auch hier nicht. Ein neuer Snooze entfernt den Wecker ebenfalls. Eingeplante Aufgaben kommen ohne Wecker zurück.
+Endet ein Snooze, holt das Backend die Aufgabe oben in Tasks zurück, ohne ‼️ unter die wichtigen, und an der Stelle der Uhr steht ein gelber Wecker. Er verschwindet wie der Inbox-Punkt, sobald die Zeile mit Tastatur oder Maus ausgewählt wird, und zwar auf allen Geräten. Die automatische Markierung beim Öffnen einer Liste zählt auch hier nicht. Ein neuer Snooze entfernt den Wecker ebenfalls. Eingeplante Aufgaben kommen ohne Wecker zurück.
 
 Subtasks stehen eingerückt unter ihrer Aufgabe, eine Ebene tief. Sie bleiben zugeklappt, bis `→` oder ein Klick auf die Subtask-Zahl sie zeigt. Eine erledigte Subtask erledigt den Parent nicht, und ein erledigter Parent darf offene Subtasks haben.
 
 Ein Klick wählt eine Zeile aus, ein Doppelklick bearbeitet den Titel, ein Rechtsklick öffnet die Aktionen. Ein Klick auf die Checkbox erledigt die Aufgabe oder öffnet sie wieder. `↵` macht den Titel zum Eingabefeld. Darin speichert `↵`, `esc` verwirft und `⌘↵` speichert und erledigt. Auch ein Klick außerhalb des Felds speichert. Scheitert das Speichern, bleibt der Entwurf im Feld.
 
-`⌘N` öffnet eine leere Zeile unter den heute erledigten Aufgaben in Tasks und klappt Tasks dafür auf. In Wichtig, Verlauf und Wiederholungen wechselt `⌘N` vorher in die Standardliste. In der App angelegte Aufgaben bekommen keine Inbox-Markierung.
+`⌘N` öffnet eine leere Zeile unter den heute erledigten und den wichtigen Aufgaben in Tasks und klappt Tasks dafür auf. In Wichtig, Verlauf und Wiederholungen wechselt `⌘N` vorher in die Standardliste. In der App angelegte Aufgaben bekommen keine Inbox-Markierung.
 
 `⌘↵` auf einer heute erledigten Aufgabe öffnet sie wieder und löscht ihren Eintrag im Verlauf. Nach dem nächtlichen Aufräumen ist sie archiviert, dann lehnt das Backend das ab.
 
@@ -254,7 +254,7 @@ Die Aktionen (`⌘K`) stehen in drei Gruppen. Zuerst Wichtig, KI-Aufgabe, Einpla
 
 Einplanen, Fällig am und Zurückstellen öffnen das Datumspanel. Ohne Eingabe bietet es Heute, Morgen, Am Wochenende (nächster Samstag), Nächste Woche (nächster Montag) und In zwei Wochen an, jeweils mit dem Datum rechts. Darunter entfernt "Kein Datum" (`⌫`) den Wert. Eine getippte Angabe erscheint als erste Zeile mit dem Abstand zu heute, etwa `in 4 Tagen`. Das Panel versteht `heute`, `morgen`, `übermorgen`, `15.10.`, `15.10.2026`, `2026-10-15`, Wochentage wie `mo` oder `freitag`, `in 3 tagen`, `in 2 wochen`, `nächste woche`, `nächsten monat` und `wochenende`. Ein Datum ohne Jahr meint den nächsten solchen Tag. Beim Zurückstellen tragen die Vorschläge eine Uhrzeit, heute 18:00, solange das noch bevorsteht, an allen anderen Tagen 9:00. Getippt geht auch eine eigene Zeit wie `morgen 14` oder `fr 9:30`. Eine vergangene Uhrzeit erscheint grau mit `vorbei`. Alle Tage gelten in der Zeitzone des Kontos.
 
-Verschieben (`⇧⌘M`) listet nur normale Listen, zuerst die Favoriten, nach einem Strich die übrigen alphabetisch. Die aktuelle Liste ist grau und trägt `aktuell`. Die Aufgabe landet oben in Tasks der Zielliste, unter den heute erledigten, und nimmt ihre Subtasks mit.
+Verschieben (`⇧⌘M`) listet nur normale Listen, zuerst die Favoriten, nach einem Strich die übrigen alphabetisch. Die aktuelle Liste ist grau und trägt `aktuell`. Die Aufgabe landet oben in Tasks der Zielliste, unter den heute erledigten und, wenn sie selbst kein ‼️ trägt, unter den wichtigen. Ihre Subtasks nimmt sie mit.
 
 Die Listensuche (`⌘P`) zeigt zuerst die Favoriten, nach einem Strich alle übrigen Listen alphabetisch, auch Verlauf und Wiederholungen. Rechts steht die Zahl der offenen Aufgaben, bei der geöffneten Liste zusätzlich `aktuell`. Die markierte Zeile zeigt einen Stern, ein Klick darauf schaltet den Favoriten um wie `⇧⌘P`. Listen anlegen und die Listenaktionen beschreibt [Listen](#listen).
 
