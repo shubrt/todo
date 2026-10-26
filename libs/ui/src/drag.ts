@@ -119,11 +119,11 @@ function lift(
 
   const layout = () => {
     const dy = Math.max(up, Math.min(down, y - y0 + list.scrollTop - scroll0));
-    const center = middles[from]! + dy;
-    // It takes a neighbor's place once its center passes the neighbor's middle.
+    // It takes a neighbor's place once its leading edge passes the neighbor's middle. Its center
+    // would stop on the middle of the run's last (or first) block, never taking that place.
     to = from;
-    while (center > (middles[to + 1] ?? Infinity)) to++;
-    while (center < (middles[to - 1] ?? -Infinity)) to--;
+    if (dy > 0) while (lifted.bottom + dy > (middles[to + 1] ?? Infinity)) to++;
+    else while (lifted.top + dy < (middles[to - 1] ?? -Infinity)) to--;
     blocks.forEach((block, index) => {
       const shift =
         index === from
